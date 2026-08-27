@@ -1,0 +1,20 @@
+[package]
+name = "hydra-umc-swarm-sync"
+version = "0.0.2"
+edition = "2021"
+description = "Precision Time Protocol (PTP / IEEE 1588) implementation for multi-node clock synchronization across the HYDRA-UMC swarm."
+license = "GPL-3.0-only"
+authors = ["JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>"]
+repository = "https://github.com/JuanenRac/HYDRA-UMC-SWARM-SYNC"
+
+[[bin]]
+name = "hydra-umc-swarm-sync"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
