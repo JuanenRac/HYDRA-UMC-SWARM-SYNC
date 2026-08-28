@@ -27,6 +27,7 @@ This synchronization is critical for multi-robot coordinated motion, where multi
 * 🔄 **Synchronized Start/Stop:** Ensures atomic execution of multi-robot trajectory commands.
 * 📡 **Hardware Timestamping:** Leverages CM5 and STM32 hardware timers for maximum accuracy.
 * 🛡️ **Network Resilient:** Handles packet jitter and temporary network delays.
+* 🔍 **Real Conflict Visibility & Swarm-Scale Convergence Proof (v0):** `merge_report()` returns a real, per-key record of every genuine write conflict resolved during reconciliation - which cell beat which other cell, and by what stamp. A 4-cell simulated test proves convergence holds across multiple rounds of partition and partial reconnection, not just a single two-cell merge.
 
 ---
 
@@ -50,6 +51,8 @@ flowchart TD
 * **Why this is a sibling, not a submodule, of HYDRA-UMC-ORCHESTRATOR.** State reconciliation is a continuous background concern independent of any single orchestration decision - keeping it a separate process means an orchestrator restart doesn't interrupt an in-flight merge.
 * **Why the CRDT merge is real today but PTP hardware sync is not.** `src/crdt.rs` implements a real LWW-Element-Map (Last-Writer-Wins Map), a state-based CRDT whose `merge` is provably commutative, associative and idempotent - not just "seems to converge on one example", see that module's own property tests. `src/lamport.rs` backs it with a real Lamport logical clock. PTP (IEEE 1588, sub-100ns hardware timestamping) is a fundamentally different, hardware-dependent problem - it needs real NICs/hardware timers to mean anything, and stays deferred until there's real hardware to validate it against. A logical clock is what the CRDT merge actually needs to resolve conflicts deterministically, and that part is real and tested today.
 * **How this fits the rest of the ecosystem.** A sibling service under HYDRA-UMC-ORCHESTRATOR, alongside HYDRA-UMC-PATH-PLANNER-3D, HYDRA-UMC-JOB-DISPATCHER and HYDRA-UMC-NODE-HEALING - keeps every cell's own view of swarm state consistent regardless of which one currently holds the orchestrator role.
+* **Why `merge_report()` is a new method instead of changing what `merge()` returns.** `merge()` stays a pure, cheap, obviously-correct black box - that simplicity is what makes it easy to trust. `merge_report()` layers real conflict visibility on top for a caller (an operator, a debugging tool) that specifically wants to know what a reconciliation overwrote, without forcing every caller of the hot-path `merge()` to pay for or handle that bookkeeping.
+* **Why conflict reports show stamp order, not causal "happened-before".** A Lamport clock guarantees that true causal happens-before implies an earlier stamp - but the converse doesn't hold: an earlier stamp does NOT prove two events were causally related rather than merely concurrent. `MergeConflict` is deliberately honest about reporting only what a Lamport clock can actually prove (a consistent total order), not a causality claim a vector clock would be needed to make.
 
 ---
 
@@ -104,18 +107,42 @@ A scenario is a JSON file with a `cells` array - each cell has an `id`
 replayed rather than generated live - the same "explicit, deterministic
 input" pattern HYDRA-UMC-PATH-PLANNER-3D's `seed` uses). Each cell's
 writes are folded into its own map, then every cell's map is merged
-twice - once left-to-right, once right-to-left - and the result prints
-`converged: true` only if both orders produced the identical final
-state, which is the actual CRDT property this service depends on, not
-just an assumption.
+twice - once left-to-right (via `merge_report()`, so every real conflict
+along the way is recorded), once right-to-left (via plain `merge()`) -
+and the result prints `converged: true` only if both orders produced the
+identical final state, which is the actual CRDT property this service
+depends on, not just an assumption.
+
+Running it against `scenarios/example.json` (where `cell-a` and `cell-b`
+both wrote to `cell-a-node-2`) shows the real conflict resolution, not
+just the final opaque result:
+
+```bash
+./run.sh scenarios/example.json
+```
+```json
+{
+  "cells_merged": 2,
+  "converged": true,
+  "conflicts_resolved": 1,
+  "conflicts": [
+    { "key": "cell-a-node-2",
+      "local_time": 2, "local_writer": 1, "local_value": "ok",
+      "remote_time": 3, "remote_writer": 2, "remote_value": "unhealthy",
+      "kept_remote": true }
+  ],
+  "merged_state": { "...": "..." }
+}
+```
 
 ```bash
 cargo test   # the Lamport clock, and the CRDT itself - including direct
              # checks that merge is commutative, associative and
              # idempotent (not just "looks right" on one example), a
              # deterministic-tie-break test for truly concurrent writes,
-             # and a test that simulates two cells running autonomously
-             # and reconciling later, per this README's own rationale
+             # merge_report()'s own conflict-detection behavior, and a
+             # 4-cell simulation proving convergence across multiple
+             # rounds of partition and partial reconnection - 16 tests total
 ```
 
 ---

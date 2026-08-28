@@ -98,11 +98,17 @@ fn main() -> ExitCode {
 
     // Merge left-to-right, then right-to-left - if the CRDT is real,
     // both orders must converge to the identical final state. This is
-    // the actual claim being demonstrated, not just "it ran".
-    let merged_forward = maps
-        .iter()
-        .skip(1)
-        .fold(maps[0].clone(), |acc, m| acc.merge(m));
+    // the actual claim being demonstrated, not just "it ran". The
+    // forward pass uses merge_report() instead of plain merge() so the
+    // CLI can show real, per-key visibility into every genuine conflict
+    // it resolved along the way - which cell's write beat which other
+    // cell's, and by what stamp - not just the final opaque result.
+    let mut conflicts: Vec<crdt::MergeConflict<String, String>> = Vec::new();
+    let merged_forward = maps.iter().skip(1).fold(maps[0].clone(), |acc, m| {
+        let (merged, round_conflicts) = acc.merge_report(m);
+        conflicts.extend(round_conflicts);
+        merged
+    });
     let merged_backward = maps
         .iter()
         .rev()
@@ -127,6 +133,8 @@ fn main() -> ExitCode {
         "cells_merged": scenario.cells.len(),
         "converged": converged,
         "merged_state": forward_snapshot,
+        "conflicts_resolved": conflicts.len(),
+        "conflicts": conflicts,
         "next_local_time": next_local_time.0,
     });
 

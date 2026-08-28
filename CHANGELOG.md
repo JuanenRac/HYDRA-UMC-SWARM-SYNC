@@ -20,6 +20,13 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.0.3] - Real conflict visibility and swarm-scale partition/reconnect proof
+
+- **`src/crdt.rs`** - `LwwMap::merge_report()` (new, alongside the unchanged `merge()`) returns the merged map plus a real, inspectable `MergeConflict` for every key where BOTH sides had a genuinely competing write (not merely a key one side introduced) - which cell's write beat which other cell's, the exact stamps involved, and which value was kept vs. discarded. `merge()` itself stays a pure black box on purpose; `merge_report()` is the opt-in entry point for an operator who wants real visibility into what a reconciliation actually overwrote.
+- **`src/main.rs`** - the CLI's forward merge now uses `merge_report()`, so its JSON output gains real `conflicts`/`conflicts_resolved` fields showing exactly which keys were contested and how they were resolved, alongside the unchanged `converged`/`merged_state` fields.
+- A new, materially larger simulated-swarm test (`a_four_cell_swarm_converges_after_multiple_partition_and_reconnect_rounds`): 4 cells write independently while fully partitioned, two sub-groups then partially reconnect and keep writing while still isolated from each other, then everyone finally reconnects in three different merge orders (forward, backward, interleaved) - all three converge to the byte-identical final state, including the specific, deterministically-correct winner of a genuinely contested shared key. A materially bigger, multi-round proof of the CRDT's eventual-convergence property than the existing single two-cell merge test.
+- 5 new tests (`merge_report`'s own behavior plus the 4-cell simulation) - 16 total, all passing. Verified live against the real release binary and `scenarios/example.json`: the real pre-existing conflict on `cell-a-node-2` (cell-a wrote `"ok"` at time 2, cell-b wrote `"unhealthy"` at time 3) is now reported explicitly, showing cell-b's write correctly winning.
+
 ## [0.0.2] - Real CRDT state reconciliation (LWW-Element-Map + Lamport clock)
 
 - **`src/lamport.rs`** - a real Lamport logical clock: `tick()` for a

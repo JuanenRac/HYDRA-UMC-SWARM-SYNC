@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "ecosystem": "HYDRA-UMC",
   "name": "HYDRA-UMC-SWARM-SYNC",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "role": "service",
   "stack": "rust",
   "technologies": [
@@ -11,11 +11,11 @@
     "PTP-style sync"
   ],
   "deployment_target": "cm5",
-  "maturity": "functional",
+  "maturity": "established",
   "family": "Orchestration & Swarm",
   "parent": "HYDRA-UMC-ORCHESTRATOR",
   "build": "cargo build --release.",
-  "notes": "Real CRDT LWW-Element-Map implementation with property-tested commutativity/associativity/idempotence.",
+  "notes": "Real CRDT LWW-Element-Map implementation with property-tested commutativity/associativity/idempotence, backed by a real Lamport logical clock for event ordering. merge_report() gives real, inspectable per-key conflict visibility (which cell's write beat which other's), and a 4-cell multi-round simulated partition/reconnect test proves eventual convergence at swarm scale, not just a single two-cell merge.",
   "native_version": {
     "file": "Cargo.toml",
     "pattern": "^version\\s*=\\s*\"(\\d+)\\.(\\d+)\\.(\\d+)\""

@@ -27,6 +27,7 @@ Diese Synchronisation ist entscheidend für koordinierte Multi-Roboter-Bewegunge
 * 🔄 **Synchronisierter Start/Stopp:** Gewährleistet die atomare Ausführung von Multi-Roboter-Trajektorienbefehlen.
 * 📡 **Hardware-Zeitstempelung:** Nutzt die Hardware-Timer von CM5 und STM32 für maximale Genauigkeit.
 * 🛡️ **Netzwerkresilient:** Handhabt Paket-Jitter und vorübergehende Netzwerkverzögerungen.
+* 🔍 **Echte Konfliktsichtbarkeit & Konvergenzbeweis auf Schwarmebene (v0):** `merge_report()` liefert einen echten, pro Schlüssel aufgeschlüsselten Datensatz jedes echten Schreibkonflikts, der während der Abstimmung aufgelöst wurde - welche Zelle welche andere geschlagen hat, und mit welchem Zeitstempel. Ein simulierter 4-Zellen-Test beweist, dass die Konvergenz über mehrere Runden von Partitionierung und teilweiser Wiederverbindung hinweg hält, nicht nur bei einem einzigen Merge zwischen zwei Zellen.
 
 ---
 
@@ -50,6 +51,8 @@ flowchart TD
 * **Warum es Geschwister, kein Submodul, von HYDRA-UMC-ORCHESTRATOR ist.** Zustandsabgleich ist ein fortlaufendes Hintergrundanliegen, unabhängig von jeder einzelnen Orchestrierungsentscheidung - es als separaten Prozess zu halten bedeutet, dass ein Neustart des Orchestrators einen laufenden Merge nicht unterbricht.
 * **Warum der CRDT-Merge heute schon echt ist, die PTP-Hardware-Synchronisation aber nicht.** `src/crdt.rs` implementiert eine echte LWW-Element-Map (Last-Writer-Wins-Map), einen zustandsbasierten CRDT, dessen `merge` nachweislich kommutativ, assoziativ und idempotent ist - nicht nur "scheint an einem Beispiel zu konvergieren", siehe die eigenen Property-Tests dieses Moduls. `src/lamport.rs` untermauert das mit einer echten Lamport-Logikuhr. PTP (IEEE 1588, Hardware-Zeitstempelung mit Sub-100ns-Genauigkeit) ist ein grundlegend anderes, hardwareabhängiges Problem - es braucht echte NICs/Hardware-Timer, um überhaupt Sinn zu ergeben, und bleibt zurückgestellt, bis es echte Hardware gibt, gegen die man es validieren kann. Eine Logikuhr ist das, was der CRDT-Merge tatsächlich braucht, um Konflikte deterministisch aufzulösen, und dieser Teil ist heute echt und getestet.
 * **Wie sich das ins restliche Ökosystem einfügt.** Ein Geschwisterdienst unter HYDRA-UMC-ORCHESTRATOR, neben HYDRA-UMC-PATH-PLANNER-3D, HYDRA-UMC-JOB-DISPATCHER und HYDRA-UMC-NODE-HEALING - hält die eigene Sicht jeder Zelle auf den Schwarmzustand konsistent, unabhängig davon, welche gerade die Orchestrator-Rolle innehat.
+* **Warum `merge_report()` eine neue Methode ist, statt zu ändern, was `merge()` zurückgibt.** `merge()` bleibt eine reine, günstige, offensichtlich korrekte Blackbox - diese Einfachheit macht sie leicht vertrauenswürdig. `merge_report()` legt darüber echte Konfliktsichtbarkeit für einen Aufrufer (einen Operator, ein Debugging-Tool), der speziell wissen will, was eine Abstimmung überschrieben hat, ohne jeden Aufrufer des heißen Pfads `merge()` zu zwingen, diese Buchführung zu bezahlen oder zu handhaben.
+* **Warum Konfliktberichte die Zeitstempel-Reihenfolge zeigen, nicht kausales "happened-before".** Eine Lamport-Uhr garantiert, dass ein echtes kausales happens-before einen früheren Zeitstempel impliziert - aber die Umkehrung gilt nicht: Ein früherer Zeitstempel beweist NICHT, dass zwei Ereignisse kausal zusammenhingen statt nur nebenläufig zu sein. `MergeConflict` ist absichtlich ehrlich und meldet nur, was eine Lamport-Uhr tatsächlich beweisen kann (eine konsistente Gesamtordnung), keine Kausalitätsaussage, für die eine Vektoruhr nötig wäre.
 
 ---
 
@@ -107,19 +110,45 @@ ist, wiedergegeben statt live erzeugt - dasselbe Muster "expliziter,
 deterministischer Input", das der `seed` von HYDRA-UMC-PATH-PLANNER-3D
 verwendet). Die Schreibvorgänge jeder Zelle werden in ihre eigene Map
 gefaltet, dann wird die Map jeder Zelle zweimal gemergt - einmal von
-links nach rechts, einmal von rechts nach links - und das Ergebnis gibt
-`converged: true` nur aus, wenn beide Reihenfolgen den identischen
-Endzustand ergeben haben, was die tatsächliche CRDT-Eigenschaft ist, von
-der dieser Dienst abhängt, nicht nur eine Annahme.
+links nach rechts (über `merge_report()`, sodass jeder echte Konflikt
+unterwegs erfasst wird), einmal von rechts nach links (über normales
+`merge()`) - und das Ergebnis gibt `converged: true` nur aus, wenn beide
+Reihenfolgen den identischen Endzustand ergeben haben, was die
+tatsächliche CRDT-Eigenschaft ist, von der dieser Dienst abhängt, nicht
+nur eine Annahme.
+
+Beim Ausführen gegen `scenarios/example.json` (wo sowohl `cell-a` als
+auch `cell-b` nach `cell-a-node-2` geschrieben haben) zeigt sich die
+echte Konfliktauflösung, nicht nur das undurchsichtige Endergebnis:
+
+```bash
+./run.sh scenarios/example.json
+```
+```json
+{
+  "cells_merged": 2,
+  "converged": true,
+  "conflicts_resolved": 1,
+  "conflicts": [
+    { "key": "cell-a-node-2",
+      "local_time": 2, "local_writer": 1, "local_value": "ok",
+      "remote_time": 3, "remote_writer": 2, "remote_value": "unhealthy",
+      "kept_remote": true }
+  ],
+  "merged_state": { "...": "..." }
+}
+```
 
 ```bash
 cargo test   # die Lamport-Uhr, und den CRDT selbst - einschließlich
              # direkter Prüfungen, dass merge kommutativ, assoziativ und
              # idempotent ist (nicht nur "sieht auf einem Beispiel richtig
              # aus"), eines deterministischen Tie-Break-Tests für wirklich
-             # nebenläufige Schreibvorgänge, und eines Tests, der zwei
-             # autonom laufende und sich später abgleichende Zellen
-             # simuliert, gemäß der eigenen Begründung dieses READMEs
+             # nebenläufige Schreibvorgänge, des eigenen
+             # Konflikterkennungsverhaltens von merge_report(), und einer
+             # 4-Zellen-Simulation, die Konvergenz über mehrere Runden von
+             # Partitionierung und teilweiser Wiederverbindung beweist -
+             # 16 Tests insgesamt
 ```
 
 ---
