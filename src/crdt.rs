@@ -360,7 +360,12 @@ mod tests {
         let mut a: LwwMap<String, String> = LwwMap::new();
         a.set("node-1".to_string(), "ok".to_string(), LamportTime(3), 1);
         let mut b: LwwMap<String, String> = LwwMap::new();
-        b.set("node-1".to_string(), "degraded".to_string(), LamportTime(7), 2);
+        b.set(
+            "node-1".to_string(),
+            "degraded".to_string(),
+            LamportTime(7),
+            2,
+        );
 
         let (merged, conflicts) = a.merge_report(&b);
         assert_eq!(conflicts.len(), 1);
@@ -371,7 +376,10 @@ mod tests {
         assert_eq!(c.remote_time, LamportTime(7));
         assert_eq!(c.remote_writer, 2);
         assert!(c.kept_remote);
-        assert_eq!(merged.get(&"node-1".to_string()), Some(&"degraded".to_string()));
+        assert_eq!(
+            merged.get(&"node-1".to_string()),
+            Some(&"degraded".to_string())
+        );
     }
 
     #[test]
@@ -502,12 +510,21 @@ mod tests {
         // (cell-3: highest Lamport time, and the writer-ID tie-break
         // over cell-1 at the same time) everywhere - not just "some
         // value", the specific, deterministically-correct one.
-        assert_eq!(forward.get(&"swarm-leader".to_string()), Some(&"cell-3".to_string()));
+        assert_eq!(
+            forward.get(&"swarm-leader".to_string()),
+            Some(&"cell-3".to_string())
+        );
         // Every cell's own final status (post-degradation) must survive
         // every round of partition and reconnection with no update lost.
-        assert_eq!(forward.get(&"cell-0".to_string()), Some(&"degraded".to_string()));
+        assert_eq!(
+            forward.get(&"cell-0".to_string()),
+            Some(&"degraded".to_string())
+        );
         assert_eq!(forward.get(&"cell-1".to_string()), Some(&"ok".to_string()));
-        assert_eq!(forward.get(&"cell-2".to_string()), Some(&"degraded".to_string()));
+        assert_eq!(
+            forward.get(&"cell-2".to_string()),
+            Some(&"degraded".to_string())
+        );
         assert_eq!(forward.get(&"cell-3".to_string()), Some(&"ok".to_string()));
         assert_eq!(forward.len(), 5);
     }
