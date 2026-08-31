@@ -81,7 +81,7 @@ substantial enough yet to warrant their own folders.
 
 ---
 
-## 🔧 BUILD & RUN
+## 🔧 BUILD & RUN GUIDE
 
 A real, tested CRDT merge - not just a skeleton that compiles: it
 reconciles a multi-cell JSON scenario and prints the converged state.
