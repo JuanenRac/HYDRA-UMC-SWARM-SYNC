@@ -1,0 +1,31 @@
+# =============================================================================
+# HYDRA-UMC-SWARM-SYNC - Local CM5 CRDT-reconciliation API systemd unit
+# Copyright (C) 2026 JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
+# GPL-3.0-or-later - see LICENSE
+# =============================================================================
+# Loopback-only, same as every other internal-only API on this CM5 -
+# this is still a real request/response computation over a scenario
+# handed to it, never the live gossip network between cells this
+# repo's own main.rs deliberately still defers (see its own header).
+[Unit]
+Description=HYDRA-UMC-SWARM-SYNC real CRDT reconciliation API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hydra-umc-swarm-sync
+Group=hydra-umc-swarm-sync
+WorkingDirectory=/opt/hydra-umc/swarm-sync
+ExecStart=/opt/hydra-umc/swarm-sync/hydra-umc-swarm-sync serve --addr 127.0.0.1 --port 8112
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

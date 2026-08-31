@@ -20,6 +20,30 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.0.4] - Real v0: JSON/HTTP server mode, plus CM5 deployment
+
+- **`reconcile.rs`** (new) - the real CRDT reconciliation `main.rs`'s
+  bare invocation already ran (build cell maps, merge forward/backward,
+  check convergence, tick the local Lamport clock) split out into a
+  pure `reconcile()` function, unchanged behavior, so both the CLI and a
+  real HTTP caller run the exact same merge logic.
+- **`server.rs`** (new) - `POST /reconcile` reaches that exact function,
+  over a real `tiny_http` server (blocking, no async runtime - same
+  convention as `HYDRA-UMC-TWIN`'s own `server.rs`). The scenario
+  travels directly in the JSON request body instead of a server-side
+  file path. Still a real request/response computation over a scenario
+  handed to it, never the live gossip network between cells this
+  project's own header comment already documents as a deliberately
+  deferred design decision - this does not touch that.
+- **`main.rs`** - new `serve` subcommand (`--addr`/`--port`, default
+  `127.0.0.1:8112`).
+- **`systemd/hydra-umc-swarm-sync.service`** (new) - loopback-only unit
+  for `HYDRA-UMC-OS/provisioning/install_swarm_sync.sh` (new, that
+  repo), compiled as a release binary, same pattern as
+  `install_twin.sh`.
+- 6 new tests (`server.rs`'s own `#[cfg(test)]` module, real end-to-end
+  HTTP over a raw `TcpStream`) - 22 total.
+
 ## [0.0.3] - Real conflict visibility and swarm-scale partition/reconnect proof
 
 - **`src/crdt.rs`** - `LwwMap::merge_report()` (new, alongside the unchanged `merge()`) returns the merged map plus a real, inspectable `MergeConflict` for every key where BOTH sides had a genuinely competing write (not merely a key one side introduced) - which cell's write beat which other cell's, the exact stamps involved, and which value was kept vs. discarded. `merge()` itself stays a pure black box on purpose; `merge_report()` is the opt-in entry point for an operator who wants real visibility into what a reconciliation actually overwrote.

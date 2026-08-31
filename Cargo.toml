@@ -1,6 +1,6 @@
 [package]
 name = "hydra-umc-swarm-sync"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 description = "Precision Time Protocol (PTP / IEEE 1588) implementation for multi-node clock synchronization across the HYDRA-UMC swarm."
 license = "GPL-3.0-only"
@@ -18,3 +18,10 @@ lto = true
 [dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+# Real gap found auditing the ecosystem against actual CM5 hardware: the
+# real CRDT reconciliation (reconcile()) was only ever reachable as a
+# one-shot CLI over a local scenario file. tiny_http is a minimal,
+# blocking, no-async-runtime HTTP/1.1 server - the closest Rust
+# equivalent to Python's stdlib ThreadingHTTPServer, already used for
+# HYDRA-UMC-TWIN's own real internal-only API.
+tiny_http = "0.12"
