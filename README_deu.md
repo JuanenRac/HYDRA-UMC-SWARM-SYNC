@@ -64,7 +64,7 @@ HYDRA-UMC-SWARM-SYNC/
 │   ├── main.rs       # CLI-Einstiegspunkt: lädt ein Szenario, gleicht ab, gibt JSON aus
 │   ├── lamport.rs    # LamportClock - die Logikuhr hinter der Ordnung des CRDT
 │   └── crdt.rs       # LwwMap - der echte CRDT: set/get/merge/snapshot
-├── scenarios/        # Beispiel-JSON-Szenarien (siehe BUILD & RUN unten)
+├── scenarios/        # Beispiel-JSON-Szenarien (siehe BUILD UND AUSFÜHRUNG unten)
 ├── build/            # Kompilierte Binärdateien (Ausgabe von build.sh/.bat)
 ├── Cargo.toml        # Rust-Paketmanifest (Name, Version, Abhängigkeiten)
 ├── bump_version.py   # Versions-Bump nach Kilometerzähler-Prinzip
