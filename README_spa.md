@@ -81,7 +81,7 @@ todavía suficiente para justificar sus propias carpetas.
 
 ---
 
-## 🔧 BUILD & RUN
+## 🔧 BUILD Y EJECUCIÓN
 
 Una fusión CRDT real y probada, no solo un esqueleto que compila:
 reconcilia un escenario JSON multi-célula e imprime el estado convergido.

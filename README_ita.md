@@ -81,7 +81,7 @@ ancora sufficiente da giustificare cartelle proprie.
 
 ---
 
-## 🔧 BUILD & RUN
+## 🔧 BUILD ED ESECUZIONE
 
 Una vera fusione CRDT testata, non solo uno scheletro che compila:
 riconcilia uno scenario JSON multi-cella e stampa lo stato convergente.
@@ -150,7 +150,7 @@ cargo test   # l'orologio di Lamport, e il CRDT stesso - incluse verifiche
 
 ---
 
-## 🚀 ROADMAP
+## 🚀 TABELLA DI MARCIA
 * **Fase 1:** Sincronizzazione deterministica dello sciame su TSN e riduzione del jitter sub-ms.
 * **Fase 2:** Pianificazione dei percorsi 3D con evitamento dinamico degli ostacoli in celle multi-robot.
 * **Fase 3:** Ottimizzazione del dispacciamento dei lavori multi-robot utilizzando la disponibilità delle risorse in tempo reale.

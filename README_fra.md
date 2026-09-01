@@ -82,7 +82,7 @@ dossiers.
 
 ---
 
-## 🔧 BUILD & RUN
+## 🔧 BUILD ET EXÉCUTION
 
 Une véritable fusion CRDT testée, pas seulement un squelette qui
 compile : elle réconcilie un scénario JSON multi-cellules et affiche
@@ -152,7 +152,7 @@ cargo test   # l'horloge de Lamport, et le CRDT lui-meme - avec des
 
 ---
 
-## 🚀 ROADMAP
+## 🚀 FEUILLE DE ROUTE
 * **Phase 1 :** Synchronisation déterministe d'essaim sur TSN et réduction de la gigue sub-ms.
 * **Phase 2 :** Planification de trajectoires 3D avec évitement dynamique d'obstacles dans les cellules multi-robots.
 * **Phase 3 :** Optimisation de la répartition des tâches multi-robots à l'aide de la disponibilité des ressources en temps réel.

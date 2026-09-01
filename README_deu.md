@@ -81,7 +81,7 @@ Inhalt, der eigene Ordner bislang rechtfertigen würde.
 
 ---
 
-## 🔧 BUILD & RUN
+## 🔧 BUILD UND AUSFÜHRUNG
 
 Ein echter, getesteter CRDT-Merge - nicht nur ein kompilierbares
 Skelett: er gleicht ein JSON-Szenario mit mehreren Zellen ab und gibt den
@@ -153,7 +153,7 @@ cargo test   # die Lamport-Uhr, und den CRDT selbst - einschließlich
 
 ---
 
-## 🚀 ROADMAP
+## 🚀 FAHRPLAN
 * **Phase 1:** Deterministische Schwarm-Synchronisation über TSN und Sub-ms-Jitter-Reduzierung.
 * **Phase 2:** 3D-Pfadplanung mit dynamischer Hindernisvermeidung in Multi-Roboter-Zellen.
 * **Phase 3:** Multi-Roboter-Job-Dispatching-Optimierung unter Berücksichtigung der Ressourcenverfügbarkeit in Echtzeit.
