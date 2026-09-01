@@ -236,6 +236,7 @@ Este proyecto no tiene relación directa fuera de la familia Orquestación y Enj
 ## 👤 AUTOR
 **JuanenRac** (Electro Hobby 3D)
 📧 electrohobby3d@gmail.com
+📺 [youtube.com/@electrohobby3d](https://youtube.com/@electrohobby3d)
 
 ## 📜 LICENCIA
 GPL-3.0 - Ver archivo LICENSE para más detalles.

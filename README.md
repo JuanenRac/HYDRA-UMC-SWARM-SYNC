@@ -233,6 +233,7 @@ This project has no direct relation outside the Orchestration & Swarm family (pe
 ## 👤 AUTHOR
 **JuanenRac** (Electro Hobby 3D)
 📧 electrohobby3d@gmail.com
+📺 [youtube.com/@electrohobby3d](https://youtube.com/@electrohobby3d)
 
 ## 📜 LICENSE
 GPL-3.0 - See LICENSE for details.

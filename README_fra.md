@@ -238,6 +238,7 @@ Ce projet n'a pas de relation directe hors de la famille Orchestration et Essaim
 ## 👤 AUTEUR
 **JuanenRac** (Electro Hobby 3D)
 📧 electrohobby3d@gmail.com
+📺 [youtube.com/@electrohobby3d](https://youtube.com/@electrohobby3d)
 
 ## 📜 LICENCE
 GPL-3.0 - Voir le fichier LICENSE pour plus de détails.
