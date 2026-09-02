@@ -27,7 +27,7 @@ Esta sincronización es crítica para el movimiento coordinado multi-robot, dond
 * 🔄 **Inicio/Parada Sincronizados:** Asegura la ejecución atómica de comandos de trayectoria multi-robot.
 * 📡 **Marcado de Tiempo por Hardware:** Aprovecha los temporizadores de hardware de CM5 y STM32 para la máxima precisión.
 * 🛡️ **Resiliente a la Red:** Maneja el jitter de paquetes y los retrasos temporales de la red.
-* 🔍 **Visibilidad Real de Conflictos y Prueba de Convergencia a Escala de Enjambre (v0):** `merge_report()` devuelve un registro real, por clave, de cada conflicto de escritura genuino resuelto durante la reconciliación - qué célula le gano a cual otra, y con qué timestamp. Un test simulado de 4 células demuestra que la convergencia se mantiene a través de multiples rondas de particion y reconexion parcial, no solo un unico merge entre dos células.
+* 🔍 **Visibilidad Real de Conflictos y Prueba de Convergencia a Escala de Enjambre (v0):** `merge_report()` devuelve un registro real, por clave, de cada conflicto de escritura genuino resuelto durante la reconciliación - qué célula le ganó a cuál otra, y con qué timestamp. Un test simulado de 4 células demuestra que la convergencia se mantiene a través de múltiples rondas de partición y reconexión parcial, no solo un único merge entre dos células.
 
 ---
 
@@ -51,8 +51,8 @@ flowchart TD
 * **Por qué es hermana, no un submódulo, de HYDRA-UMC-ORCHESTRATOR.** La reconciliación de estado es una preocupación continua de fondo, independiente de cualquier decisión de orquestación puntual - mantenerla como proceso separado significa que un reinicio del orquestador no interrumpe una fusión en curso.
 * **Por qué la fusión CRDT ya es real hoy pero la sincronización PTP por hardware no.** `src/crdt.rs` implementa un LWW-Element-Map (mapa de última escritura gana) real, un CRDT basado en estado cuya `merge` es demostrablemente conmutativa, asociativa e idempotente - no solo "parece converger" en un ejemplo, ver los tests de propiedades de ese propio módulo. `src/lamport.rs` lo respalda con un reloj lógico de Lamport real. PTP (IEEE 1588, marcado de tiempo por hardware sub-100ns) es un problema fundamentalmente distinto y dependiente de hardware - necesita NICs/temporizadores de hardware reales para tener sentido, y sigue diferido hasta que haya hardware real contra el que validarlo. Un reloj lógico es lo que la fusión CRDT realmente necesita para resolver conflictos de forma determinista, y esa parte es real y está probada hoy.
 * **Cómo encaja en el resto del ecosistema.** Un servicio hermano bajo HYDRA-UMC-ORCHESTRATOR, junto a HYDRA-UMC-PATH-PLANNER-3D, HYDRA-UMC-JOB-DISPATCHER y HYDRA-UMC-NODE-HEALING - mantiene consistente la visión que cada célula tiene del estado del enjambre, sin importar cuál ostente el rol de orquestador en cada momento.
-* **Por qué `merge_report()` es un método nuevo en vez de cambiar lo que devuelve `merge()`.** `merge()` sigue siendo una caja negra pura, barata y obviamente correcta - esa simplicidad es lo que la hace facil de confiar. `merge_report()` añade encima visibilidad real de conflictos para un llamador (un operador, una herramienta de depuracion) que especificamente quiere saber que sobreescribio una reconciliacion, sin obligar a cada llamador del camino critico `merge()` a pagar por esa contabilidad o manejarla.
-* **Por qué los reportes de conflicto muestran orden de timestamp, no "happened-before" causal.** Un reloj de Lamport garantiza que un happens-before causal real implica un timestamp anterior - pero lo contrario no es cierto: un timestamp anterior NO prueba que dos eventos estuvieran causalmente relacionados en vez de simplemente ser concurrentes. `MergeConflict` es deliberadamente honesto al reportar solo lo que un reloj de Lamport puede realmente probar (un orden total consistente), no una afirmacion de causalidad que necesitaria un reloj vectorial.
+* **Por qué `merge_report()` es un método nuevo en vez de cambiar lo que devuelve `merge()`.** `merge()` sigue siendo una caja negra pura, barata y obviamente correcta - esa simplicidad es lo que la hace fácil de confiar. `merge_report()` añade encima visibilidad real de conflictos para un llamador (un operador, una herramienta de depuración) que específicamente quiere saber qué sobreescribió una reconciliación, sin obligar a cada llamador del camino crítico `merge()` a pagar por esa contabilidad o manejarla.
+* **Por qué los reportes de conflicto muestran orden de timestamp, no "happened-before" causal.** Un reloj de Lamport garantiza que un happens-before causal real implica un timestamp anterior - pero lo contrario no es cierto: un timestamp anterior NO prueba que dos eventos estuvieran causalmente relacionados en vez de simplemente ser concurrentes. `MergeConflict` es deliberadamente honesto al reportar solo lo que un reloj de Lamport puede realmente probar (un orden total consistente), no una afirmación de causalidad que necesitaría un reloj vectorial.
 
 ---
 
@@ -62,7 +62,7 @@ flowchart TD
 HYDRA-UMC-SWARM-SYNC/
 ├── src/
 │   ├── main.rs       # Punto de entrada CLI: carga un escenario, reconcilia, imprime JSON
-│   ├── lamport.rs    # LamportClock - el reloj logico detras del orden del CRDT
+│   ├── lamport.rs    # LamportClock - el reloj lógico detrás del orden del CRDT
 │   └── crdt.rs       # LwwMap - el CRDT real: set/get/merge/snapshot
 ├── scenarios/        # Escenarios JSON de ejemplo (ver BUILD Y EJECUCIÓN abajo)
 ├── build/            # Binarios compilados (salida de build.sh/build.bat)
@@ -108,7 +108,7 @@ explícita, reproducida en vez de generada en vivo - el mismo patrón de
 "entrada explícita y determinista" que usa el `seed` de
 HYDRA-UMC-PATH-PLANNER-3D). Los writes de cada célula se pliegan en su
 propio mapa, y luego el mapa de cada célula se fusiona dos veces - una de
-izquierda a derecha (via `merge_report()`, asi que cada conflicto real en
+izquierda a derecha (vía `merge_report()`, así que cada conflicto real en
 el camino queda registrado), otra de derecha a izquierda (via `merge()`
 normal) - y el resultado imprime `converged: true` solo si ambos órdenes
 produjeron el mismo estado final, que es la propiedad real del CRDT de
