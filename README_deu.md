@@ -148,7 +148,7 @@ cargo test   # die Lamport-Uhr, und den CRDT selbst - einschließlich
              # Konflikterkennungsverhaltens von merge_report(), und einer
              # 4-Zellen-Simulation, die Konvergenz über mehrere Runden von
              # Partitionierung und teilweiser Wiederverbindung beweist -
-             # 16 Tests insgesamt
+             # 22 Tests insgesamt
 ```
 
 ---

@@ -145,7 +145,7 @@ cargo test   # el reloj de Lamport, y el CRDT en si - incluyendo
              # propio de deteccion de conflictos de merge_report(), y una
              # simulacion de 4 celulas que demuestra convergencia a
              # traves de multiples rondas de particion y reconexion
-             # parcial - 16 tests en total
+             # parcial - 22 tests en total
 ```
 
 ---

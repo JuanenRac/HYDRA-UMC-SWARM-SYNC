@@ -142,7 +142,7 @@ cargo test   # the Lamport clock, and the CRDT itself - including direct
              # deterministic-tie-break test for truly concurrent writes,
              # merge_report()'s own conflict-detection behavior, and a
              # 4-cell simulation proving convergence across multiple
-             # rounds of partition and partial reconnection - 16 tests total
+             # rounds of partition and partial reconnection - 22 tests total
 ```
 
 ---
