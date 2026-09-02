@@ -65,7 +65,12 @@ pub struct ReconcileOutput {
 fn build_cell_map(cell: &Cell) -> LwwMap<String, String> {
     let mut map = LwwMap::new();
     for w in &cell.writes {
-        map.set(w.key.clone(), w.value.clone(), LamportTime(w.time), cell.writer);
+        map.set(
+            w.key.clone(),
+            w.value.clone(),
+            LamportTime(w.time),
+            cell.writer,
+        );
     }
     map
 }

@@ -20,6 +20,16 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.0.5]
+
+- **Fixed CI**: `cargo fmt --check` was failing on `src/reconcile.rs`/
+  `src/server.rs` (lines never reflowed to the 100-column limit), and
+  `cargo clippy -- -D warnings` was failing on an unused top-level
+  `use std::io::Read` (only actually needed inside `mod tests`, moved
+  there) and `std::io::Error::new(ErrorKind::Other, e)` (now
+  `std::io::Error::other`, clippy's own suggested idiom). No behavior
+  change - `cargo test`: 22/22 passing throughout.
+
 ## [0.0.4] - Real v0: JSON/HTTP server mode, plus CM5 deployment
 
 - **`reconcile.rs`** (new) - the real CRDT reconciliation `main.rs`'s

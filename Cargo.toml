@@ -1,6 +1,6 @@
 [package]
 name = "hydra-umc-swarm-sync"
-version = "0.0.4"
+version = "0.0.5"
 edition = "2021"
 description = "Precision Time Protocol (PTP / IEEE 1588) implementation for multi-node clock synchronization across the HYDRA-UMC swarm."
 license = "GPL-3.0-only"
