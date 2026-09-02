@@ -68,22 +68,31 @@ HYDRA-UMC-SWARM-SYNC/
 ├── src/
 │   ├── main.rs       # CLI エントリポイント：シナリオを読み込み、調整し、JSON を出力
 │   ├── lamport.rs    # LamportClock - CRDT の順序付けを支える論理クロック
-│   └── crdt.rs       # LwwMap - 本物の CRDT：set/get/merge/snapshot
+│   ├── crdt.rs       # LwwMap - 本物の CRDT：set/get/merge/snapshot
+│   ├── reconcile.rs  # 実際の調整ロジック。server.rs からも使えるよう分離
+│   └── server.rs     # シンプルなJSON/HTTPサーフェス(tiny_http) - ネットワーク経由のPOST /reconcile
 ├── scenarios/        # サンプル JSON シナリオ(下記「ビルドと実行」参照)
+├── docs/
+│   └── CLI_REFERENCE.md # コマンドリファレンス
+├── images/
+│   └── HYDRA_UMC_BANNER.svg # README バナー
+├── systemd/
+│   └── hydra-umc-swarm-sync.service # ローカルCM5調整APIのsystemdユニット
+├── tools/
+│   ├── build_test.py # バージョンを増やさないビルドチェック
+│   └── ci_validate.py # CI が使用するマニフェスト/CHANGELOG/ドキュメント検証
 ├── build/            # コンパイル済みバイナリ（build.sh/build.bat の出力）
 ├── Cargo.toml        # Rust パッケージマニフェスト（名前、バージョン、依存関係）
-├── bump_version.py   # オドメーター式バージョンインクリメント、build.sh/.bat が実行
+├── bump_version.py   # ネイティブバージョンのオドメーター式インクリメント、build.sh/.bat が実行
+├── bump_manifest_version.py # hydra-umc.project.json のバージョンをネイティブ版と同期(--sync)
 ├── build.sh/.bat     # バージョンを増加させ、その後 `cargo build --release` を実行
 ├── run.sh/.bat       # コンパイル済みバイナリを実行
 └── README.md
 ```
 
-元のテンプレートから省略：`hardware/`、`firmware/`、`os/`、`docs/`、
-`images/`、`scripts/` —— これは純粋なソフトウェアサービス(Rust バイナリ)
-であり、専用のハードウェアやファームウェア、維持すべき
-オペレーティングシステムイメージもなく、専用フォルダを正当化する
-ほどのドキュメント/メディア/ユーティリティスクリプトの内容もまだ
-ありません。
+元のテンプレートから省略：`hardware/`、`firmware/`、`os/` —— これは純粋な
+ソフトウェアサービス(Rust バイナリ)であり、専用のハードウェアや
+ファームウェア、維持すべきオペレーティングシステムイメージもありません。
 
 ---
 

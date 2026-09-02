@@ -63,21 +63,31 @@ HYDRA-UMC-SWARM-SYNC/
 ├── src/
 │   ├── main.rs       # CLI-Einstiegspunkt: lädt ein Szenario, gleicht ab, gibt JSON aus
 │   ├── lamport.rs    # LamportClock - die Logikuhr hinter der Ordnung des CRDT
-│   └── crdt.rs       # LwwMap - der echte CRDT: set/get/merge/snapshot
+│   ├── crdt.rs       # LwwMap - der echte CRDT: set/get/merge/snapshot
+│   ├── reconcile.rs  # Echter Abgleich, ausgelagert damit server.rs ihn auch nutzen kann
+│   └── server.rs     # Einfache JSON/HTTP-Oberfläche (tiny_http) - POST /reconcile übers Netz
 ├── scenarios/        # Beispiel-JSON-Szenarien (siehe BUILD UND AUSFÜHRUNG unten)
+├── docs/
+│   └── CLI_REFERENCE.md # Befehlsreferenz
+├── images/
+│   └── HYDRA_UMC_BANNER.svg # README-Banner
+├── systemd/
+│   └── hydra-umc-swarm-sync.service # systemd-Unit der lokalen CM5-Abgleich-API
+├── tools/
+│   ├── build_test.py # Nicht-versionierender Build-Check
+│   └── ci_validate.py # Manifest/CHANGELOG/Docs-Validierung, von CI genutzt
 ├── build/            # Kompilierte Binärdateien (Ausgabe von build.sh/.bat)
 ├── Cargo.toml        # Rust-Paketmanifest (Name, Version, Abhängigkeiten)
-├── bump_version.py   # Versions-Bump nach Kilometerzähler-Prinzip
+├── bump_version.py   # Native Versions-Bump nach Kilometerzähler-Prinzip
+├── bump_manifest_version.py # Synchronisiert die Version von hydra-umc.project.json mit der nativen (--sync)
 ├── build.sh/.bat     # Erhöht die Version, dann `cargo build --release`
 ├── run.sh/.bat       # Führt die kompilierte Binärdatei aus
 └── README.md
 ```
 
-Aus der ursprünglichen Vorlage entfernt: `hardware/`, `firmware/`, `os/`,
-`docs/`, `images/` und `scripts/` — dies ist ein reiner Softwaredienst
-(Rust-Binärdatei) ohne eigene Hardware oder Firmware, ohne zu pflegendes
-Betriebssystem-Image, und ohne Dokumentations-/Medien-/Utility-Skript-
-Inhalt, der eigene Ordner bislang rechtfertigen würde.
+Aus der ursprünglichen Vorlage entfernt: `hardware/`, `firmware/` und
+`os/` — dies ist ein reiner Softwaredienst (Rust-Binärdatei) ohne eigene
+Hardware oder Firmware und ohne zu pflegendes Betriebssystem-Image.
 
 ---
 

@@ -63,21 +63,31 @@ HYDRA-UMC-SWARM-SYNC/
 ├── src/
 │   ├── main.rs       # Punto de entrada CLI: carga un escenario, reconcilia, imprime JSON
 │   ├── lamport.rs    # LamportClock - el reloj lógico detrás del orden del CRDT
-│   └── crdt.rs       # LwwMap - el CRDT real: set/get/merge/snapshot
+│   ├── crdt.rs       # LwwMap - el CRDT real: set/get/merge/snapshot
+│   ├── reconcile.rs  # Reconciliación real, separada para que server.rs también pueda usarla
+│   └── server.rs     # Superficie JSON/HTTP plana (tiny_http) - POST /reconcile por red
 ├── scenarios/        # Escenarios JSON de ejemplo (ver BUILD Y EJECUCIÓN abajo)
+├── docs/
+│   └── CLI_REFERENCE.md # Referencia de comandos
+├── images/
+│   └── HYDRA_UMC_BANNER.svg # Banner del README
+├── systemd/
+│   └── hydra-umc-swarm-sync.service # Unidad systemd de la API local de reconciliación en la CM5
+├── tools/
+│   ├── build_test.py # Comprobación de compilación sin versionado
+│   └── ci_validate.py # Validación de manifiesto/CHANGELOG/docs usada por CI
 ├── build/            # Binarios compilados (salida de build.sh/build.bat)
 ├── Cargo.toml        # Manifiesto del paquete Rust (nombre, versión, deps)
-├── bump_version.py   # Bump de versión tipo cuentakilómetros
+├── bump_version.py   # Bump de versión nativa tipo cuentakilómetros
+├── bump_manifest_version.py # Sincroniza la versión de hydra-umc.project.json con la nativa (--sync)
 ├── build.sh/.bat     # Sube la versión y ejecuta `cargo build --release`
 ├── run.sh/.bat       # Ejecuta el binario compilado
 └── README.md
 ```
 
-Podado de la plantilla original: `hardware/`, `firmware/`, `os/`, `docs/`,
-`images/` y `scripts/` — es un servicio de software puro (binario Rust)
-sin hardware ni firmware propios, sin imagen de sistema operativo que
-mantener, y sin contenido de documentación/medios/scripts de utilidad
-todavía suficiente para justificar sus propias carpetas.
+Podado de la plantilla original: `hardware/`, `firmware/` y `os/` — es un
+servicio de software puro (binario Rust) sin hardware ni firmware propios
+y sin imagen de sistema operativo que mantener.
 
 ---
 

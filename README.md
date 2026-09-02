@@ -63,21 +63,31 @@ HYDRA-UMC-SWARM-SYNC/
 ├── src/
 │   ├── main.rs       # CLI entry point: loads a scenario, reconciles, prints JSON
 │   ├── lamport.rs    # LamportClock - the logical clock behind the CRDT's ordering
-│   └── crdt.rs       # LwwMap - the real CRDT: set/get/merge/snapshot
+│   ├── crdt.rs       # LwwMap - the real CRDT: set/get/merge/snapshot
+│   ├── reconcile.rs  # Real reconciliation, split out so server.rs can reach it too
+│   └── server.rs     # Plain JSON/HTTP surface (tiny_http) - POST /reconcile over the network
 ├── scenarios/        # Example JSON scenarios (see BUILD & RUN below)
+├── docs/
+│   └── CLI_REFERENCE.md # Command reference
+├── images/
+│   └── HYDRA_UMC_BANNER.svg # README banner
+├── systemd/
+│   └── hydra-umc-swarm-sync.service # Local CM5 reconciliation API systemd unit
+├── tools/
+│   ├── build_test.py # Non-versioning build/compile check
+│   └── ci_validate.py # Manifest/CHANGELOG/docs validation used by CI
 ├── build/            # Compiled binaries (build.sh/build.bat output)
 ├── Cargo.toml        # Rust package manifest (name, version, deps)
-├── bump_version.py   # Odometer-style version bump, run by build.sh/.bat
+├── bump_version.py   # Odometer-style native version bump, run by build.sh/.bat
+├── bump_manifest_version.py # Syncs hydra-umc.project.json's version to the native one (--sync)
 ├── build.sh/.bat     # Bumps version, then `cargo build --release`
 ├── run.sh/.bat       # Runs the compiled binary
 └── README.md
 ```
 
-Pruned from the original template: `hardware/`, `firmware/`, `os/`, `docs/`,
-`images/` and `scripts/` — this is a pure software service (Rust binary)
-with no dedicated hardware or firmware of its own, no operating system
-image to maintain, and no documentation/media/utility-script content
-substantial enough yet to warrant their own folders.
+Pruned from the original template: `hardware/`, `firmware/` and `os/` —
+this is a pure software service (Rust binary) with no dedicated hardware
+or firmware of its own and no operating system image to maintain.
 
 ---
 

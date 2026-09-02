@@ -63,22 +63,31 @@ HYDRA-UMC-SWARM-SYNC/
 ├── src/
 │   ├── main.rs       # Point d'entrée CLI : charge un scénario, réconcilie, imprime le JSON
 │   ├── lamport.rs    # LamportClock - l'horloge logique derrière l'ordre du CRDT
-│   └── crdt.rs       # LwwMap - le véritable CRDT : set/get/merge/snapshot
+│   ├── crdt.rs       # LwwMap - le véritable CRDT : set/get/merge/snapshot
+│   ├── reconcile.rs  # Réconciliation réelle, extraite pour que server.rs puisse aussi l'utiliser
+│   └── server.rs     # Surface JSON/HTTP simple (tiny_http) - POST /reconcile sur le réseau
 ├── scenarios/        # Scénarios JSON d'exemple (voir BUILD ET EXÉCUTION ci-dessous)
+├── docs/
+│   └── CLI_REFERENCE.md # Référence des commandes
+├── images/
+│   └── HYDRA_UMC_BANNER.svg # Bannière du README
+├── systemd/
+│   └── hydra-umc-swarm-sync.service # Unité systemd de l'API locale de réconciliation sur la CM5
+├── tools/
+│   ├── build_test.py # Vérification de build sans versionnage
+│   └── ci_validate.py # Validation manifeste/CHANGELOG/docs utilisée par CI
 ├── build/            # Binaires compilés (sortie de build.sh/build.bat)
 ├── Cargo.toml        # Manifeste du paquet Rust (nom, version, dépendances)
-├── bump_version.py   # Incrément de version type compteur kilométrique
+├── bump_version.py   # Incrément de version native type compteur kilométrique
+├── bump_manifest_version.py # Synchronise la version de hydra-umc.project.json avec la version native (--sync)
 ├── build.sh/.bat     # Incrémente la version puis `cargo build --release`
 ├── run.sh/.bat       # Exécute le binaire compilé
 └── README.md
 ```
 
-Élagué du modèle original : `hardware/`, `firmware/`, `os/`, `docs/`,
-`images/` et `scripts/` — il s'agit d'un service purement logiciel
-(binaire Rust) sans matériel ni firmware propres, sans image de système
-d'exploitation à maintenir, et sans contenu de documentation/médias/
-scripts utilitaires encore suffisant pour justifier leurs propres
-dossiers.
+Élagué du modèle original : `hardware/`, `firmware/` et `os/` — il s'agit
+d'un service purement logiciel (binaire Rust) sans matériel ni firmware
+propres et sans image de système d'exploitation à maintenir.
 
 ---
 

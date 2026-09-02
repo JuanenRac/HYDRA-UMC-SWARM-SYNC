@@ -63,21 +63,31 @@ HYDRA-UMC-SWARM-SYNC/
 ├── src/
 │   ├── main.rs       # Punto di ingresso CLI: carica uno scenario, riconcilia, stampa JSON
 │   ├── lamport.rs    # LamportClock - l'orologio logico dietro l'ordine del CRDT
-│   └── crdt.rs       # LwwMap - il vero CRDT: set/get/merge/snapshot
+│   ├── crdt.rs       # LwwMap - il vero CRDT: set/get/merge/snapshot
+│   ├── reconcile.rs  # Riconciliazione reale, separata così server.rs può usarla anch'esso
+│   └── server.rs     # Superficie JSON/HTTP semplice (tiny_http) - POST /reconcile in rete
 ├── scenarios/        # Scenari JSON di esempio (vedi BUILD ED ESECUZIONE sotto)
+├── docs/
+│   └── CLI_REFERENCE.md # Riferimento comandi
+├── images/
+│   └── HYDRA_UMC_BANNER.svg # Banner del README
+├── systemd/
+│   └── hydra-umc-swarm-sync.service # Unità systemd della API locale di riconciliazione sulla CM5
+├── tools/
+│   ├── build_test.py # Controllo build senza versionamento
+│   └── ci_validate.py # Validazione manifest/CHANGELOG/docs usata dalla CI
 ├── build/            # Binari compilati (output di build.sh/build.bat)
 ├── Cargo.toml        # Manifesto del pacchetto Rust (nome, versione, dep)
-├── bump_version.py   # Bump di versione stile contachilometri
+├── bump_version.py   # Bump di versione nativa stile contachilometri
+├── bump_manifest_version.py # Sincronizza la versione di hydra-umc.project.json con quella nativa (--sync)
 ├── build.sh/.bat     # Aggiorna la versione, poi `cargo build --release`
 ├── run.sh/.bat       # Esegue il binario compilato
 └── README.md
 ```
 
-Rimossi dal template originale: `hardware/`, `firmware/`, `os/`, `docs/`,
-`images/` e `scripts/` — è un servizio puramente software (binario Rust)
-senza hardware o firmware propri, senza un'immagine del sistema operativo
-da mantenere, e senza contenuto di documentazione/media/script di utilità
-ancora sufficiente da giustificare cartelle proprie.
+Rimossi dal template originale: `hardware/`, `firmware/` e `os/` — è un
+servizio puramente software (binario Rust) senza hardware o firmware
+propri e senza un'immagine del sistema operativo da mantenere.
 
 ---
 

@@ -66,20 +66,30 @@ HYDRA-UMC-SWARM-SYNC/
 ├── src/
 │   ├── main.rs       # CLI 入口点：加载场景、协调、打印 JSON
 │   ├── lamport.rs    # LamportClock——CRDT 排序背后的逻辑时钟
-│   └── crdt.rs       # LwwMap——真正的 CRDT：set/get/merge/snapshot
+│   ├── crdt.rs       # LwwMap——真正的 CRDT：set/get/merge/snapshot
+│   ├── reconcile.rs  # 真实的协调逻辑,拆分出来以便 server.rs 也能使用
+│   └── server.rs     # 简洁的 JSON/HTTP 接口(tiny_http) - 通过网络的 POST /reconcile
 ├── scenarios/        # 示例 JSON 场景（见下方"构建与运行"）
+├── docs/
+│   └── CLI_REFERENCE.md # 命令参考
+├── images/
+│   └── HYDRA_UMC_BANNER.svg # README 横幅图
+├── systemd/
+│   └── hydra-umc-swarm-sync.service # 本地 CM5 协调 API 的 systemd 单元
+├── tools/
+│   ├── build_test.py # 不递增版本号的构建检查
+│   └── ci_validate.py # CI 使用的清单/CHANGELOG/文档校验
 ├── build/            # 编译后的二进制文件（build.sh/build.bat 的输出）
 ├── Cargo.toml        # Rust 包清单（名称、版本、依赖项）
-├── bump_version.py   # 里程表式版本递增，由 build.sh/.bat 运行
+├── bump_version.py   # 原生版本的里程表式递增，由 build.sh/.bat 运行
+├── bump_manifest_version.py # 将 hydra-umc.project.json 的版本与原生版本同步(--sync)
 ├── build.sh/.bat     # 递增版本号，然后执行 `cargo build --release`
 ├── run.sh/.bat       # 运行编译后的二进制文件
 └── README.md
 ```
 
-从原始模板中省略：`hardware/`、`firmware/`、`os/`、`docs/`、
-`images/` 和 `scripts/`——这是一个纯软件服务（Rust 二进制文件），
-没有专属硬件或固件，没有需要维护的操作系统镜像，目前也还没有
-足够多的文档/媒体/实用脚本内容值得为它们单独建立文件夹。
+从原始模板中省略：`hardware/`、`firmware/` 和 `os/`——这是一个纯软件服务
+（Rust 二进制文件），没有专属硬件或固件，也没有需要维护的操作系统镜像。
 
 ---
 
