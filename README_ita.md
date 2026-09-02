@@ -27,7 +27,7 @@ Questa sincronizzazione è fondamentale per il movimento coordinato multi-robot,
 * 🔄 **Avvio/arresto sincronizzato:** Garantisce l'esecuzione atomica dei comandi di traiettoria multi-robot.
 * 📡 **Timestamp hardware:** Sfrutta i timer hardware di CM5 e STM32 per la massima precisione.
 * 🛡️ **Resiliente alla rete:** Gestisce il jitter dei pacchetti e i ritardi temporanei della rete.
-* 🔍 **Visibilità Reale dei Conflitti e Prova di Convergenza su Scala Sciame (v0):** `merge_report()` restituisce un registro reale, per chiave, di ogni conflitto di scrittura genuino risolto durante la riconciliazione - quale cella ha battuto quale altra, e con quale timestamp. Un test simulato a 4 celle dimostra che la convergenza regge attraverso piu cicli di partizione e riconnessione parziale, non solo un singolo merge tra due celle.
+* 🔍 **Visibilità Reale dei Conflitti e Prova di Convergenza su Scala Sciame (v0):** `merge_report()` restituisce un registro reale, per chiave, di ogni conflitto di scrittura genuino risolto durante la riconciliazione - quale cella ha battuto quale altra, e con quale timestamp. Un test simulato a 4 celle dimostra che la convergenza regge attraverso più cicli di partizione e riconnessione parziale, non solo un singolo merge tra due celle.
 
 ---
 
@@ -108,7 +108,7 @@ riprodotto anziché generato dal vivo - lo stesso schema di "input
 esplicito e deterministico" che usa il `seed` di
 HYDRA-UMC-PATH-PLANNER-3D). Le scritture di ogni cella vengono ripiegate
 nella propria mappa, poi la mappa di ogni cella viene fusa due volte -
-una da sinistra a destra (tramite `merge_report()`, cosi ogni conflitto
+una da sinistra a destra (tramite `merge_report()`, così ogni conflitto
 reale lungo il percorso viene registrato), una da destra a sinistra
 (tramite `merge()` normale) - e il risultato stampa `converged: true`
 solo se entrambi gli ordini hanno prodotto lo stesso stato finale, che è
@@ -144,7 +144,7 @@ cargo test   # l'orologio di Lamport, e il CRDT stesso - incluse verifiche
              # test di spareggio deterministico per scritture veramente
              # concorrenti, il comportamento proprio di rilevamento
              # conflitti di merge_report(), e una simulazione a 4 celle
-             # che dimostra la convergenza attraverso piu cicli di
+             # che dimostra la convergenza attraverso più cicli di
              # partizione e riconnessione parziale - 16 test in totale
 ```
 
