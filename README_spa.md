@@ -135,6 +135,7 @@ conflicto, no solo el resultado final opaco:
 {
   "cells_merged": 2,
   "converged": true,
+  "merged_state": { "...": "..." },
   "conflicts_resolved": 1,
   "conflicts": [
     { "key": "cell-a-node-2",
@@ -142,7 +143,7 @@ conflicto, no solo el resultado final opaco:
       "remote_time": 3, "remote_writer": 2, "remote_value": "unhealthy",
       "kept_remote": true }
   ],
-  "merged_state": { "...": "..." }
+  "next_local_time": 6
 }
 ```
 
@@ -157,6 +158,16 @@ cargo test   # el reloj de Lamport, y el CRDT en si - incluyendo
              # traves de multiples rondas de particion y reconexion
              # parcial - 22 tests en total
 ```
+
+La misma llamada a `reconcile()` también es alcanzable a través de una
+API JSON/HTTP real (`src/server.rs`, `tiny_http`, bloqueante, sin
+runtime asíncrono) en lugar de un fichero de escenario local -
+`run.sh serve [--addr ADDR] [--port PORT]` la arranca (por defecto
+`127.0.0.1:8112`), exponiendo `POST /reconcile` (el escenario en el
+cuerpo de la petición, con la misma forma JSON) y `GET /stats`. Esto es
+lo que `systemd/hydra-umc-swarm-sync.service` ejecuta sin supervisión en
+la CM5. El uso completo, los códigos de salida y la referencia completa
+de rutas están en [`docs/CLI_REFERENCE.md`](docs/CLI_REFERENCE.md).
 
 ---
 

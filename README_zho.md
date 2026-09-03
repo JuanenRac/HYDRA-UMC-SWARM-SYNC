@@ -135,6 +135,7 @@ run.bat scenarios/example.json
 {
   "cells_merged": 2,
   "converged": true,
+  "merged_state": { "...": "..." },
   "conflicts_resolved": 1,
   "conflicts": [
     { "key": "cell-a-node-2",
@@ -142,7 +143,7 @@ run.bat scenarios/example.json
       "remote_time": 3, "remote_writer": 2, "remote_value": "unhealthy",
       "kept_remote": true }
   ],
-  "merged_state": { "...": "..." }
+  "next_local_time": 6
 }
 ```
 
@@ -154,6 +155,14 @@ cargo test   # Lamport 时钟，以及 CRDT 本身——包括直接验证 merge
              # 一个证明多轮分区和部分重连后依然收敛的 4 单元模拟——
              # 共 22 个测试
 ```
+
+同一个 `reconcile()` 调用也可以通过真实的 JSON/HTTP API
+（`src/server.rs`，`tiny_http`，阻塞式，无异步运行时）访问，而不必
+使用本地场景文件——`run.sh serve [--addr ADDR] [--port PORT]` 启动它
+（默认 `127.0.0.1:8112`），暴露 `POST /reconcile`（场景数据放在请求体中，
+JSON 格式相同）和 `GET /stats`。`systemd/hydra-umc-swarm-sync.service`
+在 CM5 上无人值守运行的正是这个模式。完整用法、退出码和路由参考详见
+[`docs/CLI_REFERENCE.md`](docs/CLI_REFERENCE.md)。
 
 ---
 

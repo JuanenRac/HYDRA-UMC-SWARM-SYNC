@@ -141,6 +141,7 @@ Lamport タイムスタンプ - HYDRA-UMC-PATH-PLANNER-3D の `seed` が使う
 {
   "cells_merged": 2,
   "converged": true,
+  "merged_state": { "...": "..." },
   "conflicts_resolved": 1,
   "conflicts": [
     { "key": "cell-a-node-2",
@@ -148,7 +149,7 @@ Lamport タイムスタンプ - HYDRA-UMC-PATH-PLANNER-3D の `seed` が使う
       "remote_time": 3, "remote_writer": 2, "remote_value": "unhealthy",
       "kept_remote": true }
   ],
-  "merged_state": { "...": "..." }
+  "next_local_time": 6
 }
 ```
 
@@ -161,6 +162,16 @@ cargo test   # Lamport クロックと CRDT 自体 - merge が可換・結合的
              # 再接続を経ても収束することを証明する 4 セルのシミュレー
              # ション - 合計 22 個のテスト
 ```
+
+同じ `reconcile()` 呼び出しは、ローカルのシナリオファイルの代わりに
+本物の JSON/HTTP API(`src/server.rs`、`tiny_http`、ブロッキング、
+非同期ランタイムなし)経由でも到達できます - `run.sh serve [--addr ADDR] [--port PORT]`
+で起動し(デフォルト `127.0.0.1:8112`)、`POST /reconcile`(リクエスト
+ボディに同じ JSON 形式のシナリオ)と `GET /stats` を公開します。これは
+`systemd/hydra-umc-swarm-sync.service` が CM5 上で無人実行している
+のと同じものです。完全な使用方法、終了コード、ルートの完全な
+リファレンスは [`docs/CLI_REFERENCE.md`](docs/CLI_REFERENCE.md) に
+あります。
 
 ---
 
