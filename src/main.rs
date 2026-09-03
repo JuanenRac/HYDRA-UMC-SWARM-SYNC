@@ -7,8 +7,9 @@
 // (IEEE 1588) hardware clock sync or a live gossip network between
 // cells. Why: PTP needs real hardware timers/NICs to mean anything
 // (sub-100ns jitter is not a software concept), and choosing a gossip
-// transport is a real network design decision - both stay deferred, see
-// mejoras_futuras.txt. What this DOES prove for real: the CRDT merge
+// transport is a real network design decision - both stay deferred until
+// there's real hardware/network infrastructure to build them against.
+// What this DOES prove for real: the CRDT merge
 // itself is commutative, associative and idempotent (see src/crdt.rs's
 // own property tests), and this CLI demonstrates that same convergence
 // on a concrete multi-cell scenario - merging in a different order

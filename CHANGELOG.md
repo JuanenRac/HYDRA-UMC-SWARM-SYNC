@@ -68,7 +68,8 @@ semantic-versioning judgment calls:
   receiving a remote timestamp (jump to one past whichever is later).
   This is what backs the CRDT's ordering - not the README's PTP (IEEE
   1588) hardware sync, which needs real NICs/hardware timers to mean
-  anything and stays deferred (see `mejoras_futuras.txt`).
+  anything and stays deferred until there's real hardware to validate it
+  against.
 - **`src/crdt.rs`** - a real LWW-Element-Map: `set`/`get`/`merge`, where
   every entry carries a `(LamportTime, writer_id)` stamp and the higher
   stamp wins a conflict, `writer_id` breaking a true tie deterministically
@@ -76,9 +77,10 @@ semantic-versioning judgment calls:
   coordinating). `merge` is a genuine join over a semilattice (per-key
   max by stamp) - proven, not assumed, by the property tests: merge is
   commutative, associative and idempotent, checked directly rather than
-  just exercised on one example. No tombstones/delete support yet - see
-  `mejoras_futuras.txt` for why that's its own real design decision, not
-  bolted on without thinking it through.
+  just exercised on one example. No tombstones/delete support yet - a
+  deliberately scoped-out design decision (garbage collection,
+  delete-wins vs. add-wins semantics), not bolted on without thinking it
+  through.
 - **`src/main.rs`** - now a real CLI: loads a multi-cell JSON scenario,
   builds one map per cell from its writes, merges every cell's map both
   left-to-right and right-to-left, and reports `converged: true` only if
@@ -100,10 +102,10 @@ semantic-versioning judgment calls:
   against `scenarios/example.json` - a real cross-cell conflict (two
   cells writing the same key) resolved correctly by timestamp, printed as
   valid JSON with `converged: true`.
-- What's still not real, on purpose - see `mejoras_futuras.txt`: PTP
-  (IEEE 1588) hardware clock sync, a live gossip/network transport
-  between cells (this is a CLI over a JSON scenario file today, not a
-  network service), and tombstone/delete support for the CRDT map.
+- What's still not real, on purpose: PTP (IEEE 1588) hardware clock
+  sync, a live gossip/network transport between cells (this is a CLI
+  over a JSON scenario file today, not a network service), and
+  tombstone/delete support for the CRDT map.
 
 ## [0.0.1] - Initial scaffolding
 

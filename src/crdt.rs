@@ -16,9 +16,9 @@
 // Deliberately no tombstones/delete support yet - removing an entry from
 // a CRDT map correctly (so a delete doesn't get silently resurrected by
 // a merge with a node that never saw it) is its own real design decision
-// (tombstone garbage collection, delete-wins vs. add-wins semantics) -
-// see mejoras_futuras.txt for why that's scoped out of this first pass
-// rather than bolted on without thinking it through.
+// (tombstone garbage collection, delete-wins vs. add-wins semantics),
+// deliberately scoped out of this first pass rather than bolted on
+// without thinking it through.
 
 use crate::lamport::LamportTime;
 use std::collections::BTreeMap;

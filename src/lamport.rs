@@ -5,8 +5,8 @@
 // A Lamport logical clock - NOT the real PTP (IEEE 1588) hardware
 // timestamping the README describes, and not pretending to be. PTP
 // needs real hardware timers/NICs to mean anything (sub-100ns jitter is
-// not a software concept) - see mejoras_futuras.txt for why that stays
-// deferred. What a logical clock CAN do without any hardware is give
+// not a software concept), so it stays deferred until there's real
+// hardware to validate it against. What a logical clock CAN do without any hardware is give
 // the CRDT merge in src/crdt.rs a real, testable, causally-consistent
 // ordering: "did update A happen-before update B, or are they
 // concurrent" - which is exactly what a state-based CRDT's merge needs
