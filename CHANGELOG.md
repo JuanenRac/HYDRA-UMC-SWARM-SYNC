@@ -1,0 +1,194 @@
+# Changelog
+
+All notable work on **HYDRA-UMC-SWARM-SYNC** is summarized here, newest first.
+This file intentionally omits calendar dates from individual entries.
+
+## Versioning scheme
+
+`Cargo.toml`'s `version` field is bumped automatically by
+`bump_version.py`, run from `build.sh`/`build.bat` before every real
+release build (`cargo build --release`).
+
+It follows the ecosystem-wide base-10 "odometer" rule rather than
+semantic-versioning judgment calls:
+
+- `PATCH` +1 on every build
+- when `PATCH` would exceed 9, it resets to 0 and `MINOR` +1 instead (e.g. `0.0.9` -> `0.1.0`, never `0.0.10`)
+- the same carry cascades into `MAJOR` if `MINOR` would exceed 9
+
+---
+
+## [0.0.7] - Rejects an "impossible" merge conflict instead of silently diverging (SWARM-01)
+
+Found in an ecosystem-wide software-improvements audit, P2:
+
+- **`LwwMap::merge_report`** now detects the one case the CRDT's own
+  single-writer invariant should make impossible: two entries carrying
+  the IDENTICAL `(time, writer)` stamp but DIFFERENT values (a corrupted
+  message, a writer bug reusing a logical time, or a malicious peer).
+  There is no principled stamp-based way to pick a winner when the stamps
+  are equal, so instead of silently keeping one side's value (which used
+  to make plain `merge()` order-dependent for exactly this case -
+  `a.merge(&b)` and `b.merge(&a)` could disagree, quietly breaking the
+  commutativity this CRDT is supposed to guarantee), `merge_report` now
+  returns a real `IdentityCollision` error naming the key, stamp, and
+  both competing values. `reconcile_with_prior` (the real path both the
+  CLI and `POST /reconcile` use) propagates this as
+  `ReconcileError::ImpossibleConflict`, refusing to produce a `converged`
+  verdict at all rather than papering over an anomaly its own merge
+  couldn't resolve. A true identical duplicate (same stamp, same value -
+  e.g. a retried gossip round) is still correctly treated as a no-op,
+  not a rejection.
+- **`LamportClock::tick`/`observe`** used plain `+= 1`, which panics in a
+  debug build and silently wraps to 0 in a release build once the
+  counter reaches `u64::MAX` - a wrap would suddenly make the clock look
+  older than every event it had ever seen, letting already-superseded
+  writes win again. Both now use `checked_add` and return a new
+  `ClockOverflowError` instead, so causal order is frozen rather than
+  reset if this astronomically unlikely edge is ever actually hit.
+- 6 new tests (2 in `crdt.rs`, 2 in `lamport.rs`, matching a corrected/
+  extended assertion in a 3rd) covering the rejection, the still-correct
+  idempotent-duplicate case, and both clock functions refusing to wrap.
+
+`LwwMap::merge_report`'s signature is a breaking change (now returns
+`Result<..., IdentityCollision<K, V>>`); so is `LamportClock::tick`/
+`observe` (now `Result<LamportTime, ClockOverflowError>`). Plain
+`merge()` is unchanged - see its own updated header comment for exactly
+which callers need `merge_report` instead.
+
+## [0.0.6] - Real per-node persistence: /reconcile now remembers
+
+- Found in an ecosystem-wide software-improvements audit: `POST
+  /reconcile` was fully stateless - every call merged only the scenario
+  in that one request body and discarded the result, so a real running
+  server never remembered a previous call, and a restart never lost
+  anything because there was never anything to lose.
+- **`src/store.rs`** (new) - real, opt-in per-node persistence: `load`/
+  `save` a real JSON file holding this node's own current
+  `LwwMap<String, String>` (key, value, AND its real conflict-resolution
+  stamp - `crdt.rs`'s new `entries_with_stamps()` - so a reload
+  re-establishes the exact same convergence state, not a fresh one that
+  could let a straggler write wrongly win a conflict it had already
+  lost). Real crash-safe atomic write (temp file + rename), same pattern
+  this ecosystem already uses everywhere durability matters.
+- **`src/reconcile.rs`** - new `reconcile_with_prior(scenario, prior)`:
+  merges the incoming scenario's own cells AND a node's own prior state
+  into the exact same real forward/backward convergence check
+  `reconcile()` already performs - `prior` merges in exactly like one
+  more real cell, no special case. The original `reconcile()` is now a
+  thin wrapper (`reconcile_with_prior(scenario, LwwMap::new())`) -
+  completely unchanged behavior for the CLI and every existing test.
+- **`src/server.rs`** - `run()` now takes an `Option<PathBuf>`: unset,
+  exactly the original memory-only behavior for the process's lifetime;
+  set, this node's own state is loaded at startup and every successful
+  `/reconcile` persists the new merged result back to disk - a real save
+  failure is a real `500`, not a silent "it worked" that quietly didn't.
+  New `GET /state` (this node's own current merged state, plain
+  key/value); `GET /stats` gained a real `persistent` field.
+- **`src/main.rs`** - new `serve --state-file PATH` flag (or
+  `SWARM_SYNC_STATE_FILE`).
+- Verified for real, end to end: built the release binary, ran it
+  against a real state file, `POST /reconcile`'d a real scenario, killed
+  the process, and started a genuinely new one pointed at the same file
+  - `GET /state` reported the exact same accumulated state, and a
+  further `/reconcile` against the new process correctly merged onto it.
+- `cargo fmt --check`/`cargo clippy --all-targets -- -D warnings`/`cargo
+  test --all-targets` all pass (30 tests, stable across 3 consecutive
+  runs - this project's tests spawn real threads/real TCP connections).
+- `systemd/hydra-umc-swarm-sync.service` and
+  `HYDRA-UMC-OS/provisioning/install_swarm_sync.sh` updated to wire
+  `--state-file` at a real, durable, `ProtectSystem=strict`-writable
+  path (separate repo, separate commit).
+
+## [0.0.5]
+
+- **Fixed CI**: `cargo fmt --check` was failing on `src/reconcile.rs`/
+  `src/server.rs` (lines never reflowed to the 100-column limit), and
+  `cargo clippy -- -D warnings` was failing on an unused top-level
+  `use std::io::Read` (only actually needed inside `mod tests`, moved
+  there) and `std::io::Error::new(ErrorKind::Other, e)` (now
+  `std::io::Error::other`, clippy's own suggested idiom). No behavior
+  change - `cargo test`: 22/22 passing throughout.
+
+## [0.0.4] - Real v0: JSON/HTTP server mode, plus CM5 deployment
+
+- **`reconcile.rs`** (new) - the real CRDT reconciliation `main.rs`'s
+  bare invocation already ran (build cell maps, merge forward/backward,
+  check convergence, tick the local Lamport clock) split out into a
+  pure `reconcile()` function, unchanged behavior, so both the CLI and a
+  real HTTP caller run the exact same merge logic.
+- **`server.rs`** (new) - `POST /reconcile` reaches that exact function,
+  over a real `tiny_http` server (blocking, no async runtime - same
+  convention as `HYDRA-UMC-TWIN`'s own `server.rs`). The scenario
+  travels directly in the JSON request body instead of a server-side
+  file path. Still a real request/response computation over a scenario
+  handed to it, never the live gossip network between cells this
+  project's own header comment already documents as a deliberately
+  deferred design decision - this does not touch that.
+- **`main.rs`** - new `serve` subcommand (`--addr`/`--port`, default
+  `127.0.0.1:8112`).
+- **`systemd/hydra-umc-swarm-sync.service`** (new) - loopback-only unit
+  for `HYDRA-UMC-OS/provisioning/install_swarm_sync.sh` (new, that
+  repo), compiled as a release binary, same pattern as
+  `install_twin.sh`.
+- 6 new tests (`server.rs`'s own `#[cfg(test)]` module, real end-to-end
+  HTTP over a raw `TcpStream`) - 22 total.
+
+## [0.0.3] - Real conflict visibility and swarm-scale partition/reconnect proof
+
+- **`src/crdt.rs`** - `LwwMap::merge_report()` (new, alongside the unchanged `merge()`) returns the merged map plus a real, inspectable `MergeConflict` for every key where BOTH sides had a genuinely competing write (not merely a key one side introduced) - which cell's write beat which other cell's, the exact stamps involved, and which value was kept vs. discarded. `merge()` itself stays a pure black box on purpose; `merge_report()` is the opt-in entry point for an operator who wants real visibility into what a reconciliation actually overwrote.
+- **`src/main.rs`** - the CLI's forward merge now uses `merge_report()`, so its JSON output gains real `conflicts`/`conflicts_resolved` fields showing exactly which keys were contested and how they were resolved, alongside the unchanged `converged`/`merged_state` fields.
+- A new, materially larger simulated-swarm test (`a_four_cell_swarm_converges_after_multiple_partition_and_reconnect_rounds`): 4 cells write independently while fully partitioned, two sub-groups then partially reconnect and keep writing while still isolated from each other, then everyone finally reconnects in three different merge orders (forward, backward, interleaved) - all three converge to the byte-identical final state, including the specific, deterministically-correct winner of a genuinely contested shared key. A materially bigger, multi-round proof of the CRDT's eventual-convergence property than the existing single two-cell merge test.
+- 5 new tests (`merge_report`'s own behavior plus the 4-cell simulation) - 16 total, all passing. Verified live against the real release binary and `scenarios/example.json`: the real pre-existing conflict on `cell-a-node-2` (cell-a wrote `"ok"` at time 2, cell-b wrote `"unhealthy"` at time 3) is now reported explicitly, showing cell-b's write correctly winning.
+
+## [0.0.2] - Real CRDT state reconciliation (LWW-Element-Map + Lamport clock)
+
+- **`src/lamport.rs`** - a real Lamport logical clock: `tick()` for a
+  local event, `observe(remote)` for the standard Lamport rule on
+  receiving a remote timestamp (jump to one past whichever is later).
+  This is what backs the CRDT's ordering - not the README's PTP (IEEE
+  1588) hardware sync, which needs real NICs/hardware timers to mean
+  anything and stays deferred until there's real hardware to validate it
+  against.
+- **`src/crdt.rs`** - a real LWW-Element-Map: `set`/`get`/`merge`, where
+  every entry carries a `(LamportTime, writer_id)` stamp and the higher
+  stamp wins a conflict, `writer_id` breaking a true tie deterministically
+  (every node resolves the same concurrent conflict the same way without
+  coordinating). `merge` is a genuine join over a semilattice (per-key
+  max by stamp) - proven, not assumed, by the property tests: merge is
+  commutative, associative and idempotent, checked directly rather than
+  just exercised on one example. No tombstones/delete support yet - a
+  deliberately scoped-out design decision (garbage collection,
+  delete-wins vs. add-wins semantics), not bolted on without thinking it
+  through.
+- **`src/main.rs`** - now a real CLI: loads a multi-cell JSON scenario,
+  builds one map per cell from its writes, merges every cell's map both
+  left-to-right and right-to-left, and reports `converged: true` only if
+  both orders produced the identical final state - the actual CRDT
+  property this service depends on, demonstrated on a concrete scenario,
+  not just claimed. Also folds the merged state's latest logical time
+  into a fresh `LamportClock` and reports `next_local_time` - what a real
+  node's very next local write would be stamped with right after
+  reconciling, the same mechanism a live daemon would use.
+- Added `serde`/`serde_json` as the crate's first real dependencies (for
+  scenario I/O) - still no async runtime, no network transport.
+- Verified for real: `cargo build`/`cargo build --release` clean; 11
+  `cargo test` cases, including direct checks of all three CRDT laws
+  (commutativity, associativity, idempotence), a deterministic-tie-break
+  test for truly concurrent writes, and a test that simulates exactly the
+  README's own rationale - two cells updating their own node's status
+  independently while partitioned, then reconciling with no update lost.
+  Additionally smoke-tested the compiled release binary end-to-end
+  against `scenarios/example.json` - a real cross-cell conflict (two
+  cells writing the same key) resolved correctly by timestamp, printed as
+  valid JSON with `converged: true`.
+- What's still not real, on purpose: PTP (IEEE 1588) hardware clock
+  sync, a live gossip/network transport between cells (this is a CLI
+  over a JSON scenario file today, not a network service), and
+  tombstone/delete support for the CRDT map.
+
+## [0.0.1] - Initial scaffolding
+
+- **`src/main.rs`** - minimal real entry point (prints identity/version/role, exits 0). No swarm-sync logic yet - CRDT-based state reconciliation across multiple HYDRA-UMC cells lands in a later pass.
+- **`Cargo.toml`** - crate metadata, no runtime dependencies yet.
+- **`build.sh` / `build.bat`**, **`run.sh` / `run.bat`** - `cargo build --release` and run the resulting binary.

@@ -1,0 +1,21 @@
+{
+  "cells": [
+    {
+      "id": "cell-a",
+      "writer": 1,
+      "writes": [
+        { "key": "cell-a-node-1", "value": "ok", "time": 1 },
+        { "key": "cell-a-node-1", "value": "degraded", "time": 4 },
+        { "key": "cell-a-node-2", "value": "ok", "time": 2 }
+      ]
+    },
+    {
+      "id": "cell-b",
+      "writer": 2,
+      "writes": [
+        { "key": "cell-b-node-1", "value": "ok", "time": 1 },
+        { "key": "cell-a-node-2", "value": "unhealthy", "time": 3 }
+      ]
+    }
+  ]
+}
