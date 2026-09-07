@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "ecosystem": "HYDRA-UMC",
+  "name": "HYDRA-UMC-SWARM-SYNC",
+  "version": "0.0.7",
+  "role": "service",
+  "stack": "rust",
+  "technologies": [
+    "Rust",
+    "CRDT (LWW-Element-Map)",
+    "PTP-style sync"
+  ],
+  "deployment_target": "cm5",
+  "maturity": "established",
+  "family": "Orchestration & Swarm",
+  "parent": "HYDRA-UMC-ORCHESTRATOR",
+  "build": "cargo build --release.",
+  "notes": "Real CRDT LWW-Element-Map implementation with property-tested commutativity/associativity/idempotence, backed by a real Lamport logical clock for event ordering. merge_report() gives real, inspectable per-key conflict visibility (which cell's write beat which other's), and a 4-cell multi-round simulated partition/reconnect test proves eventual convergence at swarm scale, not just a single two-cell merge. src/store.rs (serve --state-file) adds real, opt-in per-node persistence - POST /reconcile now merges into and durably updates this node's own state instead of discarding it every call, verified end-to-end against a real killed-and-relaunched binary, closing a real gap where the server was fully stateless. merge_report() now also rejects (IdentityCollision) the one case the CRDT's own single-writer invariant should make impossible - an identical (time, writer) stamp claiming two different values - instead of silently, order-dependently keeping one side; LamportClock::tick/observe use checked_add and a real ClockOverflowError instead of silently wrapping at u64::MAX.",
+  "native_version": {
+    "file": "Cargo.toml",
+    "pattern": "^version\\s*=\\s*\"(\\d+)\\.(\\d+)\\.(\\d+)\""
+  },
+  "service": {
+    "systemd_unit": "hydra-umc-swarm-sync.service"
+  }
+}
