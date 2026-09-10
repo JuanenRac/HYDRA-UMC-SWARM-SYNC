@@ -2,7 +2,7 @@
 // Copyright (C) 2026 JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
 // GPL-3.0 - see LICENSE
 //
-// Found in an ecosystem-wide software-improvements audit: POST
+// POST
 // /reconcile was fully stateless - every call merged only the scenario
 // in that one request body and discarded the result, so a real running
 // server had no memory of a previous /reconcile call, and a restart lost

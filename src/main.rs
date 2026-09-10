@@ -45,9 +45,8 @@ fn run_serve(args: &[String]) -> ExitCode {
     let addr = find_flag(args, "--addr").unwrap_or_else(|| "127.0.0.1".to_string());
     let port = find_flag(args, "--port").unwrap_or_else(|| "8112".to_string());
     let bind_addr = format!("{addr}:{port}");
-    // Real per-node persistence, opt-in (found in an ecosystem-wide
-    // software-improvements audit - see server.rs's own module doc for
-    // the full "why"): unset, this node stays exactly the memory-only
+    // Real per-node persistence, opt-in (see server.rs's own module doc
+    // for the full "why"): unset, this node stays exactly the memory-only
     // behavior it always had; set, its own real CRDT state survives a
     // restart at this real file.
     let state_path = find_flag(args, "--state-file")

@@ -10,7 +10,7 @@
 //! JSON request body instead, since a server-side file path only ever
 //! made sense for a CLI running on the same machine as the file.
 //!
-//! Found in an ecosystem-wide software-improvements audit: this server
+//! This server
 //! used to be fully stateless - every /reconcile call started from a
 //! blank slate and discarded its own result, so a real running instance
 //! never remembered a previous call, and a restart never lost anything
@@ -281,8 +281,7 @@ mod tests {
 
     // The real point of this whole pass: a SECOND /reconcile call must
     // remember what the first one converged to, not start from a blank
-    // slate - the exact real gap found in an ecosystem-wide software-
-    // improvements audit.
+    // slate.
     #[test]
     fn a_second_reconcile_call_accumulates_onto_the_first_instead_of_forgetting_it() {
         let port = start_test_server();
