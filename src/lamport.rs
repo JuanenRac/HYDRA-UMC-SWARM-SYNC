@@ -18,9 +18,8 @@
 )]
 pub struct LamportTime(pub u64);
 
-/// SWARM-01 (found in an ecosystem-wide software-improvements audit, P2 -
-/// closure criterion "contador maximo no panica ni reinicia orden
-/// causal"): plain `+= 1` on this counter panics in a debug build and
+/// SWARM-01 (P2 - "the max counter neither panics nor resets causal
+/// order"): plain `+= 1` on this counter panics in a debug build and
 /// silently WRAPS TO ZERO in a release build once it reaches `u64::MAX` -
 /// a release-build wrap is the real danger: this clock would suddenly
 /// look older than every event it has ever observed, letting already-

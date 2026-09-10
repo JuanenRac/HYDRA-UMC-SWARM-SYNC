@@ -180,10 +180,9 @@ $ hydra-umc-swarm-sync serve --port 8112 --state-file /var/lib/hydra-umc/swarm-s
 
 `--addr` (default `127.0.0.1`) and `--port` (default `8112`) are both
 optional. **`--state-file PATH`** (or the `SWARM_SYNC_STATE_FILE` env
-var) is real, opt-in per-node persistence (`src/store.rs`) — found in an
-ecosystem-wide software-improvements audit: this server used to be fully
-stateless, discarding every `/reconcile` result instead of remembering
-it. Unset, this node stays exactly the memory-only behavior it always
+var) is real, opt-in per-node persistence (`src/store.rs`) — this server
+used to be fully stateless, discarding every `/reconcile` result instead
+of remembering it. Unset, this node stays exactly the memory-only behavior it always
 had for the lifetime of the process — a real, supported mode for a
 short-lived test/demo instance with nothing worth surviving a restart.
 Set, this node's own real CRDT state is loaded from that file at

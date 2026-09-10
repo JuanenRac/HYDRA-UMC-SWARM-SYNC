@@ -20,7 +20,7 @@ semantic-versioning judgment calls:
 
 ## [0.0.7] - Rejects an "impossible" merge conflict instead of silently diverging (SWARM-01)
 
-Found in an ecosystem-wide software-improvements audit, P2:
+A real gap (P2):
 
 - **`LwwMap::merge_report`** now detects the one case the CRDT's own
   single-writer invariant should make impossible: two entries carrying
@@ -58,7 +58,7 @@ which callers need `merge_report` instead.
 
 ## [0.0.6] - Real per-node persistence: /reconcile now remembers
 
-- Found in an ecosystem-wide software-improvements audit: `POST
+- `POST
   /reconcile` was fully stateless - every call merged only the scenario
   in that one request body and discarded the result, so a real running
   server never remembered a previous call, and a restart never lost

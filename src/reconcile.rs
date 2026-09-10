@@ -45,8 +45,8 @@ pub enum ReconcileError {
     /// SWARM-01: a real, "impossible" identity collision surfaced by
     /// `LwwMap::merge_report` - see that error type's own header comment.
     /// Refusing to produce a `ReconcileOutput` at all is the real
-    /// "rechazo" (rejection) the audit finding's own closure criterion
-    /// asks for, rather than silently reporting a `converged` verdict
+    /// "rechazo" (rejection) the situation calls for, rather than
+    /// silently reporting a `converged` verdict
     /// that papers over an anomaly the merge itself couldn't resolve.
     ImpossibleConflict(IdentityCollision<String, String>),
     /// SWARM-01: this node's own Lamport clock reached `u64::MAX` while
@@ -101,8 +101,7 @@ pub fn reconcile(scenario: &Scenario) -> Result<ReconcileOutput, ReconcileError>
     reconcile_with_prior(scenario, LwwMap::new()).map(|(output, _)| output)
 }
 
-/// Real per-node persistence support (found in an ecosystem-wide
-/// software-improvements audit): merges `scenario`'s own cells AND
+/// Real per-node persistence support: merges `scenario`'s own cells AND
 /// `prior` - this node's own previously-persisted state (store.rs), or a
 /// fresh empty map on that node's first run - into the same real
 /// forward/backward convergence check `reconcile` already performs, so a

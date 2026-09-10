@@ -105,7 +105,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
 
     /// Every entry's full real state - key, value, and the exact
     /// (time, writer) stamp `set`/`merge` resolved conflicts with -
-    /// found in an ecosystem-wide software-improvements audit: a real
+    /// a real
     /// per-node Store (store.rs) needs this, not `snapshot()`'s own
     /// value-only view, to survive a process restart without losing an
     /// entry's own real conflict-resolution stamp. Reloading a
@@ -164,8 +164,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
     /// associated with one value); see the tests below for a direct
     /// check of all three properties, not just an example merge.
     ///
-    /// SWARM-01 (found in an ecosystem-wide software-improvements audit,
-    /// P2): if that invariant is ever actually violated - two entries
+    /// SWARM-01 (P2): if that invariant is ever actually violated - two entries
     /// present with the IDENTICAL stamp but DIFFERENT values, which
     /// should never happen from a correctly-behaved single writer, but
     /// could from a corrupted message, a writer bug reusing a logical
