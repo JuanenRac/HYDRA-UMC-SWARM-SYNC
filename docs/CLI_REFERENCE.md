@@ -30,7 +30,7 @@ identity/version and role, then the command's own output:
 
 ```
 $ hydra-umc-swarm-sync
-HYDRA-UMC-SWARM-SYNC v0.0.5
+HYDRA-UMC-SWARM-SYNC v0.0.7
 CRDT swarm state reconciliation service: merges every HydraNode cell's view of swarm state into one convergent, order-independent result.
 Usage: hydra-umc-swarm-sync <scenario.json>
        hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH]
@@ -73,7 +73,7 @@ them (`cell-a-node-2` is written by both cells at different Lamport times):
 
 ```
 $ hydra-umc-swarm-sync scenarios/example.json
-HYDRA-UMC-SWARM-SYNC v0.0.5
+HYDRA-UMC-SWARM-SYNC v0.0.7
 CRDT swarm state reconciliation service: merges every HydraNode cell's view of swarm state into one convergent, order-independent result.
 {
   "cells_merged": 2,
@@ -125,7 +125,7 @@ Spanish; exit `1`):
 
 ```
 $ hydra-umc-swarm-sync scenarios/does-not-exist.json
-HYDRA-UMC-SWARM-SYNC v0.0.5
+HYDRA-UMC-SWARM-SYNC v0.0.7
 CRDT swarm state reconciliation service: merges every HydraNode cell's view of swarm state into one convergent, order-independent result.
 [swarm-sync] could not read scenarios/does-not-exist.json: El sistema no puede encontrar el archivo especificado. (os error 2)
 ```
@@ -135,7 +135,7 @@ CRDT swarm state reconciliation service: merges every HydraNode cell's view of s
 ```
 $ echo '{not valid' > malformed.json
 $ hydra-umc-swarm-sync malformed.json
-HYDRA-UMC-SWARM-SYNC v0.0.5
+HYDRA-UMC-SWARM-SYNC v0.0.7
 CRDT swarm state reconciliation service: merges every HydraNode cell's view of swarm state into one convergent, order-independent result.
 [swarm-sync] could not parse malformed.json: key must be a string at line 1 column 2
 ```
@@ -146,7 +146,7 @@ empty merge as success (exit `1`):
 ```
 $ echo '{"cells": []}' > empty.json
 $ hydra-umc-swarm-sync empty.json
-HYDRA-UMC-SWARM-SYNC v0.0.5
+HYDRA-UMC-SWARM-SYNC v0.0.7
 CRDT swarm state reconciliation service: merges every HydraNode cell's view of swarm state into one convergent, order-independent result.
 [swarm-sync] scenario has no cells - nothing to reconcile
 ```

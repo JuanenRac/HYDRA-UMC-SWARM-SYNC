@@ -66,7 +66,8 @@ HYDRA-UMC-SWARM-SYNC/
 │   ├── lamport.rs    # LamportClock - die Logikuhr hinter der Ordnung des CRDT
 │   ├── crdt.rs       # LwwMap - der echte CRDT: set/get/merge/snapshot
 │   ├── reconcile.rs  # Echter Abgleich, ausgelagert damit server.rs ihn auch nutzen kann
-│   └── server.rs     # Einfache JSON/HTTP-Oberfläche (tiny_http) - POST /reconcile übers Netz
+│   ├── server.rs     # Einfache JSON/HTTP-Oberfläche (tiny_http) - POST /reconcile übers Netz
+│   └── store.rs      # Echte optionale Persistenz pro Knoten (--state-file): eine absturzsichere JSON-Zustandsdatei
 ├── scenarios/        # Beispiel-JSON-Szenarien (siehe BUILD UND AUSFÜHRUNG unten)
 ├── docs/
 │   └── CLI_REFERENCE.md # Befehlsreferenz

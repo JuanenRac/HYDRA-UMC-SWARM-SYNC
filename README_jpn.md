@@ -71,7 +71,8 @@ HYDRA-UMC-SWARM-SYNC/
 │   ├── lamport.rs    # LamportClock - CRDT の順序付けを支える論理クロック
 │   ├── crdt.rs       # LwwMap - 本物の CRDT：set/get/merge/snapshot
 │   ├── reconcile.rs  # 実際の調整ロジック。server.rs からも使えるよう分離
-│   └── server.rs     # シンプルなJSON/HTTPサーフェス(tiny_http) - ネットワーク経由のPOST /reconcile
+│   ├── server.rs     # シンプルなJSON/HTTPサーフェス(tiny_http) - ネットワーク経由のPOST /reconcile
+│   └── store.rs      # 実際の任意のノードごとの永続化(--state-file):クラッシュ耐性のあるJSON状態ファイル
 ├── scenarios/        # サンプル JSON シナリオ(下記「ビルドと実行」参照)
 ├── docs/
 │   └── CLI_REFERENCE.md # コマンドリファレンス
