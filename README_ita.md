@@ -14,6 +14,8 @@
   <img src="https://img.shields.io/badge/Precisione-<100ns-green.svg" alt="Accuracy">
 </p>
 
+**Verifica di onestà - cosa funziona davvero oggi:** l'orologio logico di Lamport (`src/lamport.rs`), il CRDT LWW-Element-Map il cui merge è dimostrato commutativo/associativo/idempotente da property test, non solo verificato a occhio su un esempio (`src/crdt.rs`), la logica di riconciliazione condivisa tra la CLI e il server (`src/reconcile.rs`), la persistenza reale per nodo a prova di crash (`src/store.rs`, `--state-file`, verificata contro un binario realmente terminato e riavviato), e il server JSON/HTTP che espone tutto questo (`src/server.rs`, `tiny_http`, `POST /reconcile`, `GET /stats`) sono reali e testati (34 test, `cargo test`), inclusa una simulazione a 4 celle che dimostra la convergenza attraverso più round di partizione e riconnessione parziale. Ciò che NON è reale: il timestamping hardware PTP (IEEE 1588), la precisione sub-100 ns che descrivono il badge di questo README e i punti "Sincronizzazione ultra-precisa"/"Timestamp hardware" - non c'è alcun codice PTP in nessuna parte di questo crate, e resta rimandato finché non ci sarà vero hardware NIC/timer per validarlo (vedi ARCHITETTURA più sotto). Ciò che esiste ed è testato oggi è l'orologio logico (Lamport) di cui il merge del CRDT ha davvero bisogno, non una sincronizzazione di orologio hardware reale. Vedi `CHANGELOG.md` per ciò che è stato consegnato finora esattamente, e la TABELLA DI MARCIA più sotto per ciò che resta aperto.
+
 ---
 
 ## 1. 🛠️ PANORAMICA TECNICA
@@ -23,10 +25,10 @@
 Questa sincronizzazione è fondamentale per il movimento coordinato multi-robot, in cui più bracci devono iniziare e terminare le traiettorie nello stesso microsecondo esatto per evitare collisioni o per eseguire compiti di assemblaggio congiunti.
 
 ### Caratteristiche principali:
-* ⏱️ **Sincronizzazione ultra-precisa:** Ottiene un jitter inferiore a 100 ns nella rete locale.
-* 🔄 **Avvio/arresto sincronizzato:** Garantisce l'esecuzione atomica dei comandi di traiettoria multi-robot.
-* 📡 **Timestamp hardware:** Sfrutta i timer hardware di CM5 e STM32 per la massima precisione.
-* 🛡️ **Resiliente alla rete:** Gestisce il jitter dei pacchetti e i ritardi temporanei della rete.
+* ⏱️ **Orologio logico, non ancora sincronizzazione PTP hardware:** `src/lamport.rs` implementa un vero orologio logico di Lamport, testato - la primitiva di ordinamento di cui il merge del CRDT sotto ha davvero bisogno. Il jitter sub-100 ns e il timestamping hardware PTP (IEEE 1588) sono l'obiettivo finale (vedi ARCHITETTURA più sotto), non qualcosa che questo crate misura o implementa oggi - non c'è alcun codice NIC/timer hardware da nessuna parte in questo repository, e il commento di intestazione di `src/lamport.rs` lo dichiara esplicitamente.
+* 🔄 **Riconciliazione dello stato CRDT (reale oggi):** l'LWW-Element-Map di `src/crdt.rs` unisce lo stato di più celle in modo deterministico - dimostrato commutativo, associativo e idempotente da property test, non un avvio/arresto sincronizzato di comandi di traiettoria robot (quell'orchestrazione vive in HYDRA-UMC-ORCHESTRATOR/HYDRA-UMC-JOB-DISPATCHER, non qui).
+* 📡 **Ancora nessun timestamp hardware:** sfruttare veri timer hardware CM5/STM32 è lavoro futuro - questo crate è puro software (un binario Rust), senza alcun codice che tocchi l'hardware.
+* 🛡️ **Merge CRDT resiliente alla riconnessione (reale oggi):** un vero test di simulazione a 4 celle (`cargo test`) dimostra che la convergenza regge attraverso più round di partizione e riconnessione parziale - questa è resilienza a una cella che va offline e si ricollega più tardi, non una resilienza misurata al jitter/ritardo reale dei pacchetti di rete, che questo crate non strumenta.
 * 🔍 **Visibilità Reale dei Conflitti e Prova di Convergenza su Scala Sciame (v0):** `merge_report()` restituisce un registro reale, per chiave, di ogni conflitto di scrittura genuino risolto durante la riconciliazione - quale cella ha battuto quale altra, e con quale timestamp. Un test simulato a 4 celle dimostra che la convergenza regge attraverso più cicli di partizione e riconnessione parziale, non solo un singolo merge tra due celle.
 * 💾 **Persistenza Reale per Nodo (`--state-file`):** Lo stato CRDT proprio della modalità `serve` ora sopravvive a un vero riavvio del processo (`src/store.rs`) - ogni `POST /reconcile` si fonde nello stato di questo nodo e lo aggiorna in modo duraturo invece di ripartire da zero a ogni chiamata - verificato contro un vero processo terminato e rilanciato, non solo test interni. Se non configurato, resta il comportamento originale solo in memoria. Vedi `docs/CLI_REFERENCE.md`.
 

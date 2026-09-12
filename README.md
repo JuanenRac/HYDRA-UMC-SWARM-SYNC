@@ -14,6 +14,8 @@
   <img src="https://img.shields.io/badge/Accuracy-<100ns-green.svg" alt="Accuracy">
 </p>
 
+**Honesty check - what actually runs today:** the Lamport logical clock (`src/lamport.rs`), the LWW-Element-Map CRDT with a merge proven commutative/associative/idempotent by property tests, not just eyeballed on one example (`src/crdt.rs`), the reconciliation logic shared between the CLI and the server (`src/reconcile.rs`), the real crash-safe per-node persistence (`src/store.rs`, `--state-file`, verified against an actual killed-and-relaunched binary), and the JSON/HTTP server exposing all of it (`src/server.rs`, `tiny_http`, `POST /reconcile`, `GET /stats`) are real and tested (34 tests, `cargo test`), including a 4-cell simulation proving convergence across multiple rounds of partition and partial reconnection. What is NOT real: PTP (IEEE 1588) hardware timestamping, the sub-100ns accuracy this README's own badge and "Ultra-Precise Sync"/"Hardware Timestamping" bullets describe - there is no PTP code anywhere in this crate, and it stays deferred until there is real NIC/hardware-timer hardware to validate it against (see ARCHITECTURE below). What exists and is tested today is the logical (Lamport) clock the CRDT merge actually needs, not wall-clock hardware synchronization. See `CHANGELOG.md` for exactly what has shipped so far, and the ROADMAP below for what remains open.
+
 ---
 
 ## 1. 🛠️ TECHNICAL OVERVIEW
@@ -23,10 +25,10 @@
 This synchronization is critical for multi-robot coordinated motion, where multiple arms must start and end trajectories at the exact same microsecond to avoid collisions or to perform joint assembly tasks.
 
 ### Key Features:
-* ⏱️ **Ultra-Precise Sync:** Achieves sub-100ns jitter across the local network.
-* 🔄 **Synchronized Start/Stop:** Ensures atomic execution of multi-robot trajectory commands.
-* 📡 **Hardware Timestamping:** Leverages CM5 and STM32 hardware timers for maximum accuracy.
-* 🛡️ **Network Resilient:** Handles packet jitter and temporary network delays.
+* ⏱️ **Logical Clock, Not Hardware PTP Sync Yet:** `src/lamport.rs` implements a real, tested Lamport logical clock - the ordering primitive the CRDT merge below actually needs. Sub-100ns jitter and PTP (IEEE 1588) hardware timestamping are the eventual goal (see ARCHITECTURE below), not something this crate measures or implements today - there is no NIC/hardware-timer code anywhere in this repository, and `src/lamport.rs`'s own header comment says so explicitly.
+* 🔄 **CRDT State Reconciliation (real today):** `src/crdt.rs`'s LWW-Element-Map merges multiple cells' state deterministically - proven commutative, associative and idempotent by property tests, not synchronized start/stop of robot trajectory commands (that orchestration lives in HYDRA-UMC-ORCHESTRATOR/HYDRA-UMC-JOB-DISPATCHER, not here).
+* 📡 **No Hardware Timestamping Yet:** leveraging real CM5/STM32 hardware timers is future work - this crate is pure software (Rust binary), with no hardware-facing code at all.
+* 🛡️ **Reconnection-Resilient CRDT Merge (real today):** a real 4-cell simulated test (`cargo test`) proves convergence holds across multiple rounds of partition and partial reconnection - this is resilience to a cell going offline and rejoining later, not measured resilience to live network packet jitter/delay, which this crate doesn't instrument.
 * 🔍 **Real Conflict Visibility & Swarm-Scale Convergence Proof (v0):** `merge_report()` returns a real, per-key record of every genuine write conflict resolved during reconciliation - which cell beat which other cell, and by what stamp. A 4-cell simulated test proves convergence holds across multiple rounds of partition and partial reconnection, not just a single two-cell merge.
 * 💾 **Real Per-Node Persistence (`--state-file`):** `serve` mode's own CRDT state now survives a real process restart (`src/store.rs`) - every `POST /reconcile` merges into and durably updates this node's own state instead of starting from a blank slate every call, verified against an actual killed-and-relaunched binary, not just in-process tests. Unset, it stays the original memory-only behavior. See `docs/CLI_REFERENCE.md`.
 
