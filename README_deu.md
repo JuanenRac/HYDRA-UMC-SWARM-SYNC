@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/Präzision-<100ns-green.svg" alt="Accuracy">
 </p>
 
-**Ehrlichkeitscheck - was heute wirklich läuft:** die Lamport-Logik-Uhr (`src/lamport.rs`), das LWW-Element-Map-CRDT, dessen Merge durch Property-Tests als kommutativ/assoziativ/idempotent bewiesen ist - nicht nur an einem Beispiel per Augenschein geprüft (`src/crdt.rs`), die zwischen CLI und Server geteilte Reconciliation-Logik (`src/reconcile.rs`), die echte, absturzsichere Persistenz pro Knoten (`src/store.rs`, `--state-file`, verifiziert gegen ein tatsächlich abgeschossenes und neu gestartetes Binary), und der JSON/HTTP-Server, der all das bereitstellt (`src/server.rs`, `tiny_http`, `POST /reconcile`, `GET /stats`), sind real und getestet (34 Tests, `cargo test`), einschließlich einer 4-Zellen-Simulation, die Konvergenz über mehrere Runden von Partitionierung und teilweiser Wiederverbindung beweist. Was NICHT real ist: PTP-(IEEE-1588-)Hardware-Zeitstempelung, die Sub-100-ns-Genauigkeit, die das Badge dieses READMEs und die Punkte "Ultrapräzise Synchronisation"/"Hardware-Zeitstempelung" beschreiben - es gibt nirgendwo in diesem Crate PTP-Code, und das bleibt zurückgestellt, bis es echte NIC-/Hardware-Timer-Hardware gibt, gegen die es validiert werden kann (siehe ARCHITEKTUR weiter unten). Was heute existiert und getestet ist, ist die logische (Lamport-)Uhr, die der CRDT-Merge tatsächlich braucht, keine echte Hardware-Uhrsynchronisation. Siehe `CHANGELOG.md` für genau das, was bisher ausgeliefert wurde, und die ROADMAP weiter unten für das, was noch offen ist.
+**Ehrlichkeitscheck - was heute wirklich läuft:** die Lamport-Logik-Uhr (`src/lamport.rs`), das LWW-Element-Map-CRDT, dessen Merge durch Property-Tests als kommutativ/assoziativ/idempotent bewiesen ist - nicht nur an einem Beispiel per Augenschein geprüft (`src/crdt.rs`), die zwischen CLI und Server geteilte Reconciliation-Logik (`src/reconcile.rs`), die echte, absturzsichere Persistenz pro Knoten (`src/store.rs`, `--state-file`, verifiziert gegen ein tatsächlich abgeschossenes und neu gestartetes Binary), und der JSON/HTTP-Server, der all das bereitstellt (`src/server.rs`, `tiny_http`, `POST /reconcile`, `GET /stats`), sind real und getestet (39 Tests, `cargo test`), einschließlich einer 4-Zellen-Simulation, die Konvergenz über mehrere Runden von Partitionierung und teilweiser Wiederverbindung beweist. Was NICHT real ist: PTP-(IEEE-1588-)Hardware-Zeitstempelung, die Sub-100-ns-Genauigkeit, die das Badge dieses READMEs und die Punkte "Ultrapräzise Synchronisation"/"Hardware-Zeitstempelung" beschreiben - es gibt nirgendwo in diesem Crate PTP-Code, und das bleibt zurückgestellt, bis es echte NIC-/Hardware-Timer-Hardware gibt, gegen die es validiert werden kann (siehe ARCHITEKTUR weiter unten). Was heute existiert und getestet ist, ist die logische (Lamport-)Uhr, die der CRDT-Merge tatsächlich braucht, keine echte Hardware-Uhrsynchronisation. Siehe `CHANGELOG.md` für genau das, was bisher ausgeliefert wurde, und die ROADMAP weiter unten für das, was noch offen ist.
 
 ---
 
@@ -163,7 +163,7 @@ cargo test   # die Lamport-Uhr, und den CRDT selbst - einschließlich
              # Konflikterkennungsverhaltens von merge_report(), und einer
              # 4-Zellen-Simulation, die Konvergenz über mehrere Runden von
              # Partitionierung und teilweiser Wiederverbindung beweist -
-             # 34 Tests insgesamt
+             # 39 Tests insgesamt
 ```
 
 Derselbe Aufruf von `reconcile()` ist außerdem über eine echte JSON/HTTP-API

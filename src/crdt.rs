@@ -92,6 +92,62 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
         }
     }
 
+    /// SWARM-01/H036: identical to `set` in every case except one - a real
+    /// `IdentityCollision` this call would otherwise resolve by silent
+    /// insertion order, exactly like `merge_report`'s own "same (time,
+    /// writer) stamp, two different values" case already refuses to
+    /// resolve for a cross-map merge (see that method's own comment on
+    /// `IdentityCollision`). `build_cell_map` used to build a cell's own
+    /// local map with plain `set` - two writes for the SAME key at the
+    /// SAME (time, writer) stamp but DIFFERENT values (a real, if
+    /// unusual, "impossible" case: this map's own single-writer invariant
+    /// says a stamp identifies exactly one real write) silently kept
+    /// whichever happened to be inserted first and discarded the other
+    /// with no trace, entirely BEFORE `reconcile_with_prior`'s own
+    /// cross-cell `merge_report` ever got a chance to see two competing
+    /// values at all - permuting `cell.writes`' own order could then
+    /// silently change which value "won", with neither permutation ever
+    /// reported as a conflict. This is the exact same ambiguity
+    /// `IdentityCollision` exists for, so it's reported the exact same
+    /// way here instead of a second, order-dependent silent resolution.
+    pub fn set_checked(
+        &mut self,
+        key: K,
+        value: V,
+        time: LamportTime,
+        writer: u64,
+    ) -> Result<(), IdentityCollision<K, V>> {
+        let new_stamp = Stamp { time, writer };
+        match self.entries.get(&key) {
+            Some(existing) if existing.stamp == new_stamp => {
+                if existing.value != value {
+                    return Err(IdentityCollision {
+                        key,
+                        time: existing.stamp.time,
+                        writer: existing.stamp.writer,
+                        local_value: existing.value.clone(),
+                        remote_value: value,
+                    });
+                }
+                // Identical stamp AND identical value - a true idempotent
+                // duplicate, not a conflict (same as merge_report's own
+                // matching case).
+                Ok(())
+            }
+            Some(existing) if existing.stamp > new_stamp => Ok(()), // an existing write already wins - ignore, same as set()
+            _ => {
+                self.entries.insert(
+                    key,
+                    Entry {
+                        value,
+                        stamp: new_stamp,
+                    },
+                );
+                Ok(())
+            }
+        }
+    }
+
     // get/len/is_empty/keys: today only exercised by this module's own
     // tests (the CLI in main.rs only needs set/merge/snapshot/max_time) -
     // kept as the real, complete public API of a map type, for whatever
@@ -532,6 +588,51 @@ mod tests {
         let (merged, conflicts) = a.merge_report(&b).unwrap();
         assert!(conflicts.is_empty());
         assert_eq!(merged.get(&"node-1".to_string()), Some(&"ok".to_string()));
+    }
+
+    #[test]
+    fn set_checked_rejects_the_same_identity_collision_plain_set_would_silently_resolve() {
+        // H036: same (time, writer) stamp, different values - the exact
+        // ambiguity merge_report already refuses above, but reached here
+        // through set_checked directly (build_cell_map's own call site),
+        // not through a two-map merge. Plain `set` (see the sibling
+        // assertion below) would have silently kept "first" here purely
+        // because it was inserted first - set_checked must refuse instead.
+        let mut m: LwwMap<String, String> = LwwMap::new();
+        m.set_checked("x".to_string(), "first".to_string(), LamportTime(5), 1)
+            .unwrap();
+        let err = m
+            .set_checked("x".to_string(), "second".to_string(), LamportTime(5), 1)
+            .unwrap_err();
+        assert_eq!(err.key, "x");
+        assert_eq!(err.time, LamportTime(5));
+        assert_eq!(err.writer, 1);
+        assert_eq!(err.local_value, "first");
+        assert_eq!(err.remote_value, "second");
+
+        // Proves this really is what plain `set` gets wrong: same inputs,
+        // no error, "first" silently wins with zero record a collision
+        // ever happened - the real bug set_checked exists to close.
+        let mut plain: LwwMap<String, String> = LwwMap::new();
+        plain.set("x".to_string(), "first".to_string(), LamportTime(5), 1);
+        plain.set("x".to_string(), "second".to_string(), LamportTime(5), 1);
+        assert_eq!(plain.get(&"x".to_string()), Some(&"first".to_string()));
+    }
+
+    #[test]
+    fn set_checked_still_accepts_a_true_duplicate_and_a_real_later_write() {
+        let mut m: LwwMap<String, String> = LwwMap::new();
+        m.set_checked("x".to_string(), "same".to_string(), LamportTime(5), 1)
+            .unwrap();
+        // Identical stamp AND identical value - idempotent, not an error.
+        m.set_checked("x".to_string(), "same".to_string(), LamportTime(5), 1)
+            .unwrap();
+        assert_eq!(m.get(&"x".to_string()), Some(&"same".to_string()));
+
+        // A genuinely later stamp still wins normally, same as plain set.
+        m.set_checked("x".to_string(), "newer".to_string(), LamportTime(9), 1)
+            .unwrap();
+        assert_eq!(m.get(&"x".to_string()), Some(&"newer".to_string()));
     }
 
     #[test]

@@ -78,17 +78,27 @@ pub struct ReconcileOutput {
     pub next_local_time: u64,
 }
 
-fn build_cell_map(cell: &Cell) -> LwwMap<String, String> {
+/// H036: uses `set_checked` (not plain `set`) so two writes in this SAME
+/// cell's own `writes` list, for the same key at the identical (time,
+/// writer) stamp but with DIFFERENT values, are refused as the real
+/// `IdentityCollision` they are - see `set_checked`'s own header comment
+/// for exactly why plain `set` silently resolving this by insertion order
+/// was a real bug (permuting `cell.writes` could change which value
+/// "won", with neither permutation ever surfacing as a conflict, entirely
+/// before `reconcile_with_prior`'s own cross-cell merge ever ran).
+fn build_cell_map(
+    cell: &Cell,
+) -> Result<LwwMap<String, String>, IdentityCollision<String, String>> {
     let mut map = LwwMap::new();
     for w in &cell.writes {
-        map.set(
+        map.set_checked(
             w.key.clone(),
             w.value.clone(),
             LamportTime(w.time),
             cell.writer,
-        );
+        )?;
     }
-    map
+    Ok(map)
 }
 
 /// The exact real merge this project's own CLI already runs: merges
@@ -123,7 +133,9 @@ pub fn reconcile_with_prior(
 
     let mut maps: Vec<LwwMap<String, String>> = Vec::with_capacity(scenario.cells.len() + 1);
     maps.push(prior);
-    maps.extend(scenario.cells.iter().map(build_cell_map));
+    for cell in &scenario.cells {
+        maps.push(build_cell_map(cell).map_err(ReconcileError::ImpossibleConflict)?);
+    }
 
     let mut conflicts: Vec<MergeConflict<String, String>> = Vec::new();
     // SWARM-01: try_fold (not fold) so a real IdentityCollision reported
