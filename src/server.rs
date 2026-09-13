@@ -218,6 +218,74 @@ mod tests {
         assert!(body.contains("from-a"));
     }
 
+    // H036: two writes for the SAME key at the identical (time, writer)
+    // stamp but DIFFERENT values, both inside the SAME cell's own
+    // `writes` list - before the fix, build_cell_map() used plain `set`
+    // and silently kept whichever write happened to be listed first,
+    // discarding the other with no trace and never surfacing it to
+    // reconcile_with_prior's own cross-cell conflict detection at all.
+    // This must now be refused as a real IdentityCollision (400), exactly
+    // like the identical situation already is when it happens ACROSS two
+    // cells (reconcile_resolves_a_real_conflict's own sibling case, a
+    // genuine stamp ORDERING difference, is a normal resolvable conflict
+    // - this is the "same stamp, still two different values" case that
+    // has no principled winner at all).
+    #[test]
+    fn reconcile_rejects_a_same_stamp_collision_inside_one_cell() {
+        let port = start_test_server();
+        let scenario = r#"{"cells": [
+            {"id": "cell-a", "writer": 1, "writes": [
+                {"key": "x", "value": "first", "time": 5},
+                {"key": "x", "value": "second", "time": 5}
+            ]}
+        ]}"#;
+        let (status, body) = post(port, "/reconcile", scenario);
+        assert_eq!(status, 400);
+        assert!(body.contains("impossible conflict"));
+        assert!(body.contains("first"));
+        assert!(body.contains("second"));
+    }
+
+    // H036's own acceptance criterion: PERMUTING those two entries must
+    // never produce a different, "conflict-free" result - both orderings
+    // must be refused identically, since neither value is a principled
+    // winner. Before the fix, this permutation would have silently kept
+    // "second" instead of "first" (the plain LWW `set` insertion-order
+    // tie-break) and reported 200, converged - the exact bug this closes.
+    #[test]
+    fn reconcile_rejects_the_same_collision_regardless_of_write_order() {
+        let port = start_test_server();
+        let scenario = r#"{"cells": [
+            {"id": "cell-a", "writer": 1, "writes": [
+                {"key": "x", "value": "second", "time": 5},
+                {"key": "x", "value": "first", "time": 5}
+            ]}
+        ]}"#;
+        let (status, body) = post(port, "/reconcile", scenario);
+        assert_eq!(status, 400);
+        assert!(body.contains("impossible conflict"));
+    }
+
+    // A true idempotent duplicate (identical stamp AND identical value,
+    // e.g. a retried write landing twice in the same cell's own log) must
+    // still merge cleanly - H036's fix must not turn every same-stamp
+    // repeat into a false-positive collision, only a genuinely competing
+    // one with two different values.
+    #[test]
+    fn reconcile_still_accepts_a_true_duplicate_write_inside_one_cell() {
+        let port = start_test_server();
+        let scenario = r#"{"cells": [
+            {"id": "cell-a", "writer": 1, "writes": [
+                {"key": "x", "value": "same", "time": 5},
+                {"key": "x", "value": "same", "time": 5}
+            ]}
+        ]}"#;
+        let (status, body) = post(port, "/reconcile", scenario);
+        assert_eq!(status, 200);
+        assert!(body.contains("\"conflicts_resolved\":0"));
+        assert!(body.contains("same"));
+    }
+
     #[test]
     fn reconcile_rejects_empty_cells() {
         let port = start_test_server();

@@ -18,6 +18,28 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.0.8] - H036: a same-stamp collision inside one cell no longer disappears silently
+
+- `build_cell_map()` used plain `LwwMap::set` to build one cell's own
+  local map from its `writes` list - two writes for the SAME key at the
+  identical (time, writer) stamp but DIFFERENT values (the real
+  "impossible conflict" SWARM-01 already refuses when it happens ACROSS
+  two cells) silently kept whichever was listed first and discarded the
+  other with no trace, entirely before the cross-cell merge this
+  project's own `reconcile_with_prior()` performs ever got a chance to
+  see it - permuting that cell's own write order could then silently
+  change which value "won", with neither permutation ever reported as a
+  conflict.
+- Add `LwwMap::set_checked`, the same identity-collision check
+  `merge_report` already does for a cross-map merge, now available for
+  building a single map from a sequence of writes too. `build_cell_map`
+  uses it and now returns a real, refusable error instead of a plain map.
+- Add real regression coverage confirmed to fail without the fix and
+  pass with it: 2 `LwwMap` unit tests (`set_checked` directly, including
+  a side-by-side proof of what plain `set` gets wrong) and 3 end-to-end
+  `/reconcile` tests, including permuting the two colliding writes and
+  confirming a true idempotent duplicate still merges cleanly.
+
 ## [0.0.7] - Rejects an "impossible" merge conflict instead of silently diverging (SWARM-01)
 
 A real gap (P2):

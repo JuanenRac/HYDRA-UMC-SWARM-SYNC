@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/Precisión-<100ns-green.svg" alt="Accuracy">
 </p>
 
-**Verificación de honestidad - qué funciona de verdad hoy:** el reloj lógico de Lamport (`src/lamport.rs`), el CRDT LWW-Element-Map con un merge demostrado conmutativo/asociativo/idempotente mediante property tests, no solo comprobado a ojo en un ejemplo (`src/crdt.rs`), la lógica de reconciliación compartida entre la CLI y el servidor (`src/reconcile.rs`), la persistencia real por nodo a prueba de caídas (`src/store.rs`, `--state-file`, verificada contra un binario realmente matado y relanzado), y el servidor JSON/HTTP que expone todo esto (`src/server.rs`, `tiny_http`, `POST /reconcile`, `GET /stats`) son reales y están probados (34 tests, `cargo test`), incluyendo una simulación de 4 celdas que demuestra convergencia a través de múltiples rondas de partición y reconexión parcial. Lo que NO es real: el timestamping por hardware PTP (IEEE 1588), la precisión sub-100ns que describen la propia insignia de este README y las viñetas "Sincronización Ultra-Precisa"/"Marcado de Tiempo por Hardware" - no hay ningún código PTP en todo este crate, y sigue diferido hasta que haya hardware real de NIC/temporizador para validarlo contra (ver ARQUITECTURA más abajo). Lo que existe y está probado hoy es el reloj lógico (Lamport) que el merge del CRDT realmente necesita, no una sincronización de reloj de hardware real. Ver `CHANGELOG.md` para lo que ya se ha entregado exactamente, y la HOJA DE RUTA más abajo para lo que sigue abierto.
+**Verificación de honestidad - qué funciona de verdad hoy:** el reloj lógico de Lamport (`src/lamport.rs`), el CRDT LWW-Element-Map con un merge demostrado conmutativo/asociativo/idempotente mediante property tests, no solo comprobado a ojo en un ejemplo (`src/crdt.rs`), la lógica de reconciliación compartida entre la CLI y el servidor (`src/reconcile.rs`), la persistencia real por nodo a prueba de caídas (`src/store.rs`, `--state-file`, verificada contra un binario realmente matado y relanzado), y el servidor JSON/HTTP que expone todo esto (`src/server.rs`, `tiny_http`, `POST /reconcile`, `GET /stats`) son reales y están probados (39 tests, `cargo test`), incluyendo una simulación de 4 celdas que demuestra convergencia a través de múltiples rondas de partición y reconexión parcial. Lo que NO es real: el timestamping por hardware PTP (IEEE 1588), la precisión sub-100ns que describen la propia insignia de este README y las viñetas "Sincronización Ultra-Precisa"/"Marcado de Tiempo por Hardware" - no hay ningún código PTP en todo este crate, y sigue diferido hasta que haya hardware real de NIC/temporizador para validarlo contra (ver ARQUITECTURA más abajo). Lo que existe y está probado hoy es el reloj lógico (Lamport) que el merge del CRDT realmente necesita, no una sincronización de reloj de hardware real. Ver `CHANGELOG.md` para lo que ya se ha entregado exactamente, y la HOJA DE RUTA más abajo para lo que sigue abierto.
 
 ---
 
@@ -160,7 +160,7 @@ cargo test   # el reloj de Lamport, y el CRDT en si - incluyendo
              # propio de deteccion de conflictos de merge_report(), y una
              # simulacion de 4 celulas que demuestra convergencia a
              # traves de multiples rondas de particion y reconexion
-             # parcial - 34 tests en total
+             # parcial - 39 tests en total
 ```
 
 La misma llamada a `reconcile()` también es alcanzable a través de una
