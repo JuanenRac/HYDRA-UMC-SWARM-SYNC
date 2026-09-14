@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/Accuracy-<100ns-green.svg" alt="Accuracy">
 </p>
 
-**诚实核查 - 今天真正能运行的部分：** Lamport 逻辑时钟(`src/lamport.rs`)、经属性测试证明满足交换律/结合律/幂等性(而不仅仅是用一个例子肉眼验证)的 LWW-Element-Map CRDT 合并(`src/crdt.rs`)、CLI 与服务端共享的协调逻辑(`src/reconcile.rs`)、真实的、经过真正杀死并重启二进制文件验证的崩溃安全的按节点持久化(`src/store.rs`、`--state-file`)，以及公开这一切的 JSON/HTTP 服务器(`src/server.rs`、`tiny_http`、`POST /reconcile`、`GET /stats`)都是真实的并经过测试(39 个测试，`cargo test`)，包括一个 4 单元模拟测试，证明了在多轮分区和部分重连中收敛性依然成立。尚不真实的部分：PTP(IEEE 1588)硬件时间戳，即本 README 自身的徽章和"超精密同步"/"硬件时间戳"条目所描述的亚 100ns 精度——本 crate 中没有任何 PTP 代码，这部分将推迟到有真实的网卡/硬件定时器可供验证为止(见下方 ARCHITECTURE)。今天真实存在并经过测试的，是 CRDT 合并实际需要的逻辑(Lamport)时钟，而不是真正的硬件时钟同步。具体已交付的内容请见 `CHANGELOG.md`，尚待完成的部分请见下方 ROADMAP。
+**诚实核查 - 今天真正能运行的部分：** Lamport 逻辑时钟(`src/lamport.rs`)、经属性测试证明满足交换律/结合律/幂等性(而不仅仅是用一个例子肉眼验证)的 LWW-Element-Map CRDT 合并(`src/crdt.rs`)、CLI 与服务端共享的协调逻辑(`src/reconcile.rs`)、真实的、经过真正杀死并重启二进制文件验证的崩溃安全的按节点持久化(`src/store.rs`、`--state-file`)，以及公开这一切的 JSON/HTTP 服务器(`src/server.rs`、`tiny_http`、`POST /reconcile`、`GET /stats`)都是真实的并经过测试(51 个测试，`cargo test`)，包括一个 4 单元模拟测试，证明了在多轮分区和部分重连中收敛性依然成立。尚不真实的部分：PTP(IEEE 1588)硬件时间戳，即本 README 自身的徽章和"超精密同步"/"硬件时间戳"条目所描述的亚 100ns 精度——本 crate 中没有任何 PTP 代码，这部分将推迟到有真实的网卡/硬件定时器可供验证为止(见下方 ARCHITECTURE)。今天真实存在并经过测试的，是 CRDT 合并实际需要的逻辑(Lamport)时钟，而不是真正的硬件时钟同步。具体已交付的内容请见 `CHANGELOG.md`，尚待完成的部分请见下方 ROADMAP。
 
 ---
 
@@ -157,7 +157,7 @@ cargo test   # Lamport 时钟，以及 CRDT 本身——包括直接验证 merge
              # 例子上"看起来正确"）、一个针对真正并发写入的确定性
              # 平局判定测试、merge_report() 自身的冲突检测行为，以及
              # 一个证明多轮分区和部分重连后依然收敛的 4 单元模拟——
-             # 共 39 个测试
+             # 共 51 个测试
 ```
 
 同一个 `reconcile()` 调用也可以通过真实的 JSON/HTTP API

@@ -13,33 +13,70 @@
 // a naive last-write-wins-by-wall-clock approach can't guarantee that
 // across a real network partition (clocks drift, arrive out of order).
 //
-// Deliberately no tombstones/delete support yet - removing an entry from
-// a CRDT map correctly (so a delete doesn't get silently resurrected by
-// a merge with a node that never saw it) is its own real design decision
-// (tombstone garbage collection, delete-wins vs. add-wins semantics),
-// deliberately scoped out of this first pass rather than bolted on
-// without thinking it through.
+// I19: real tombstone support. `remove()` marks a key as genuinely
+// deleted (`Entry.value: None`) instead of physically dropping it from
+// `entries` - a plain removal would let a merge with a peer that never
+// saw the delete silently resurrect the key, since that peer's own
+// still-present copy would look like a perfectly ordinary write to
+// anyone who had already forgotten the key ever existed. `Stamp` grows a
+// `generation` field (see its own doc comment) specifically so a delete
+// can never lose to a peer's STALE add just because that stale add
+// happens to carry a numerically higher raw Lamport time - generation
+// tracks real create/delete life-phase TRANSITIONS, which raw time
+// alone cannot distinguish from an unrelated later edit to something
+// else on that peer. No garbage collection of old tombstones yet
+// (they stay in `entries` forever) - real GC needs a safe "every node
+// has seen this tombstone" quorum signal this v0 doesn't have, and a
+// tombstone that vanished too early would reopen exactly the
+// resurrection bug this feature exists to close.
 
 use crate::lamport::LamportTime;
 use std::collections::BTreeMap;
 use std::hash::Hash;
 
-/// One entry's version stamp: (logical time, writer node ID). Comparing
-/// two stamps is what resolves a conflict on the same key - later
-/// logical time wins; if two writes are truly concurrent (equal logical
-/// time, which Lamport clocks make rare but not impossible across
-/// independently-ticking nodes), the writer ID is the deterministic
-/// tie-breaker, so every node resolves the SAME concurrent conflict the
-/// SAME way without needing to talk to each other about it.
+/// One entry's version stamp: (generation, logical time, writer node
+/// ID). Comparing two stamps is what resolves a conflict on the same
+/// key - `#[derive(PartialOrd, Ord)]` compares fields in DECLARATION
+/// order, so `generation` is the PRIMARY sort key, `time` breaks a tie
+/// within the same generation, and `writer` is the final deterministic
+/// tie-breaker for two truly concurrent writes (equal generation AND
+/// logical time - Lamport clocks make this rare but not impossible
+/// across independently-ticking nodes). Every node resolves the SAME
+/// conflict the SAME way without needing to talk to each other about it.
+///
+/// I19: `generation` starts at 1 the first time a key is ever written
+/// (set OR removed) and increments only on a real create/delete
+/// life-phase TRANSITION for that exact key (present -> tombstoned, or
+/// tombstoned/never-seen -> present) - an ordinary update to an
+/// already-present key, or a redundant remove of an already-tombstoned
+/// one, keeps the same generation and is still resolved by (time,
+/// writer) alone, exactly as before this field existed. This is what
+/// actually protects a real delete from a stale resurrection: a peer
+/// that deleted-then-recreated a key twice (generation 3) always beats
+/// a peer still holding a stale add from generation 1, even if that
+/// stale add's own raw Lamport time happens to be numerically higher
+/// purely because that peer's clock kept ticking on OTHER, unrelated
+/// keys while partitioned - something (generation, time, writer) can
+/// tell apart that (time, writer) alone provably cannot. `Stamp` is
+/// still a total order either way (a struct's derived `Ord` over
+/// totally-ordered fields is itself total), so `merge`'s "keep the max
+/// Stamp per key" join-semilattice laws (commutative/associative/
+/// idempotent - see the property tests) hold for exactly the same
+/// reason they always did; no merge/set logic below had to change shape
+/// to gain tombstone support, only how a Stamp gets constructed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Stamp {
+    generation: u64,
     time: LamportTime,
     writer: u64,
 }
 
 #[derive(Debug, Clone)]
 struct Entry<V> {
-    value: V,
+    /// `None` is a real tombstone (this key was genuinely deleted), not
+    /// "this key doesn't exist in `entries`" - see this module's own
+    /// header comment for why the distinction matters.
+    value: Option<V>,
     stamp: Stamp,
 }
 
@@ -68,14 +105,61 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
         Self::default()
     }
 
+    /// The generation a NEW write to `key` should carry, given whether
+    /// that write is making the key `becoming_present` (`true` for
+    /// `set`/`set_checked`, `false` for `remove`) - see `Stamp`'s own
+    /// doc comment for why this, not raw Lamport time alone, is the real
+    /// mechanism that protects a delete from a stale resurrection.
+    ///
+    /// This reads THIS map's CURRENT entry, not "whatever was objectively
+    /// true at `key` as of the new write's own Lamport time" - correct
+    /// as long as `set`/`remove` calls for a given key are applied in
+    /// non-decreasing time order (true for a real node's own local
+    /// writes, always stamped by `lamport::tick()`'s monotonically
+    /// increasing clock). Applying a phase-transitioning call OUT of
+    /// chronological order (e.g. a `remove` at an earlier time than a
+    /// `set` already applied to this same map) lets it win purely
+    /// because it transitions the CURRENT phase, even at a numerically
+    /// smaller raw time - unlike plain `set`-vs-`set`, which stays
+    /// order-independent within a generation. `merge()` itself is
+    /// unaffected (it only ever compares two already-stamped `Entry`
+    /// values, never recomputes a generation) - this caveat is about
+    /// sequential same-map application order alone, and nothing in this
+    /// project's real request path (`reconcile.rs`'s own `Cell`/`Write`
+    /// contract has no way to express a delete yet) can trigger it today.
+    fn next_generation(&self, key: &K, becoming_present: bool) -> u64 {
+        match self.entries.get(key) {
+            None => 1,
+            Some(existing) => {
+                if existing.value.is_some() == becoming_present {
+                    existing.stamp.generation
+                } else {
+                    existing.stamp.generation + 1
+                }
+            }
+        }
+    }
+
     /// Records a write to `key`, stamped with `time`/`writer`. If an
     /// entry already exists for this key with a stamp that would win
     /// against this one, the existing entry is kept - `set` on its own
     /// already obeys the same conflict rule `merge` uses, so a node
     /// applying its own out-of-order writes (e.g. replaying a log)
     /// converges the same way a merge would.
+    ///
+    /// Same "kept as the real, complete public API" status as
+    /// get/len/is_empty/keys above (see that comment) - the real
+    /// request-handling path uses `set_checked` (an identity-collision-
+    /// checked sibling) instead, now that store.rs's own reload also
+    /// moved to `restore_entry`.
+    #[allow(dead_code)]
     pub fn set(&mut self, key: K, value: V, time: LamportTime, writer: u64) {
-        let new_stamp = Stamp { time, writer };
+        let generation = self.next_generation(&key, true);
+        let new_stamp = Stamp {
+            generation,
+            time,
+            writer,
+        };
         match self.entries.get(&key) {
             Some(existing) if existing.stamp >= new_stamp => {
                 // An existing write already wins this conflict - ignore.
@@ -84,7 +168,48 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
                 self.entries.insert(
                     key,
                     Entry {
-                        value,
+                        value: Some(value),
+                        stamp: new_stamp,
+                    },
+                );
+            }
+        }
+    }
+
+    /// I19: the real counterpart to `set` - marks `key` as genuinely
+    /// deleted (a tombstone, see this module's own header comment)
+    /// rather than merely absent, obeying the exact same conflict rule
+    /// `set`/`merge` already do: a remove whose stamp would lose against
+    /// the current entry is ignored, same as a stale `set` is. Removing
+    /// a key that doesn't exist yet (or is already tombstoned) is a
+    /// real, valid no-op-shaped write too - it still records a real
+    /// tombstone, so a FUTURE stray add for a key this node was
+    /// explicitly told should never exist doesn't silently resurrect it
+    /// either.
+    ///
+    /// Not yet reachable from a real request (`server.rs` has no HTTP
+    /// endpoint that calls this, and neither does `reconcile.rs`'s own
+    /// `Cell`/`Write` shape - it has no way to express "this write is a
+    /// delete" at all) - exercised directly by this module's own and
+    /// store.rs's tests today, same real-complete-API status as `set`
+    /// above. Wiring a real delete into the actual reconcile request
+    /// contract is separate, larger scope than this map's own internal
+    /// tombstone mechanics.
+    #[allow(dead_code)]
+    pub fn remove(&mut self, key: K, time: LamportTime, writer: u64) {
+        let generation = self.next_generation(&key, false);
+        let new_stamp = Stamp {
+            generation,
+            time,
+            writer,
+        };
+        match self.entries.get(&key) {
+            Some(existing) if existing.stamp >= new_stamp => {}
+            _ => {
+                self.entries.insert(
+                    key,
+                    Entry {
+                        value: None,
                         stamp: new_stamp,
                     },
                 );
@@ -117,16 +242,21 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
         time: LamportTime,
         writer: u64,
     ) -> Result<(), IdentityCollision<K, V>> {
-        let new_stamp = Stamp { time, writer };
+        let generation = self.next_generation(&key, true);
+        let new_stamp = Stamp {
+            generation,
+            time,
+            writer,
+        };
         match self.entries.get(&key) {
             Some(existing) if existing.stamp == new_stamp => {
-                if existing.value != value {
+                if existing.value.as_ref() != Some(&value) {
                     return Err(IdentityCollision {
                         key,
                         time: existing.stamp.time,
                         writer: existing.stamp.writer,
                         local_value: existing.value.clone(),
-                        remote_value: value,
+                        remote_value: Some(value),
                     });
                 }
                 // Identical stamp AND identical value - a true idempotent
@@ -139,7 +269,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
                 self.entries.insert(
                     key,
                     Entry {
-                        value,
+                        value: Some(value),
                         stamp: new_stamp,
                     },
                 );
@@ -149,47 +279,102 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
     }
 
     // get/len/is_empty/keys: today only exercised by this module's own
-    // tests (the CLI in main.rs only needs set/merge/snapshot/max_time) -
-    // kept as the real, complete public API of a map type, for whatever
-    // calls this as a library later (a live sync daemon, other tooling),
-    // not left half-finished just because nothing outside tests reaches
-    // for them yet.
+    // tests (the real request-handling path - reconcile.rs's own
+    // build_cell_map, and store.rs's restore_entry-based reload - only
+    // needs set_checked/restore_entry/merge/snapshot/max_time, never
+    // plain set directly) - kept as the real, complete public API of a
+    // map type, for whatever calls this as a library later (a live sync
+    // daemon, other tooling), not left half-finished just because
+    // nothing outside tests reaches for them yet.
     #[allow(dead_code)]
     pub fn get(&self, key: &K) -> Option<&V> {
-        self.entries.get(key).map(|e| &e.value)
+        self.entries.get(key).and_then(|e| e.value.as_ref())
     }
 
-    /// Every entry's full real state - key, value, and the exact
-    /// (time, writer) stamp `set`/`merge` resolved conflicts with -
-    /// a real
-    /// per-node Store (store.rs) needs this, not `snapshot()`'s own
-    /// value-only view, to survive a process restart without losing an
-    /// entry's own real conflict-resolution stamp. Reloading a
-    /// snapshot's plain values back in with a FRESH stamp would corrupt
-    /// this map's own convergence guarantee: a later write from a
-    /// straggler node that this map had already correctly out-won before
-    /// the restart could wrongly overwin it afterward, since a fresh
-    /// stamp remembers none of the history that decision was based on.
-    pub fn entries_with_stamps(&self) -> Vec<(K, V, LamportTime, u64)> {
+    /// Every entry's full real state - key, value (`None` for a real
+    /// tombstone - see this module's own header comment), and the exact
+    /// (generation, time, writer) stamp `set`/`remove`/`merge` resolved
+    /// conflicts with - a real per-node Store (store.rs) needs ALL of
+    /// this, not `snapshot()`'s own value-only visible view, to survive
+    /// a process restart without losing an entry's own real
+    /// conflict-resolution stamp OR a real tombstone. Losing a tombstone
+    /// on restart would reopen the exact resurrection `remove()`'s own
+    /// header comment describes, the very next time this node
+    /// reconnects to a peer that still has the pre-delete value.
+    /// Reloading a snapshot's plain values back in with a FRESH stamp
+    /// would corrupt this map's own convergence guarantee: a later write
+    /// from a straggler node that this map had already correctly
+    /// out-won before the restart could wrongly overwin it afterward,
+    /// since a fresh stamp remembers none of the history that decision
+    /// was based on. Pair with `restore_entry` on the reload side.
+    pub fn entries_with_stamps(&self) -> Vec<(K, Option<V>, LamportTime, u64, u64)> {
         self.entries
             .iter()
-            .map(|(k, e)| (k.clone(), e.value.clone(), e.stamp.time, e.stamp.writer))
+            .map(|(k, e)| {
+                (
+                    k.clone(),
+                    e.value.clone(),
+                    e.stamp.time,
+                    e.stamp.writer,
+                    e.stamp.generation,
+                )
+            })
             .collect()
     }
 
+    /// I19: restores one entry EXACTLY as `entries_with_stamps` reported
+    /// it, `generation` included - used only by a real restart-time
+    /// reload (store.rs's own `load`), never by an ordinary live write.
+    /// Unlike `set`/`remove`, this trusts the caller's own `generation`
+    /// outright instead of computing a fresh life-phase transition from
+    /// local history: the whole point is faithfully reproducing history
+    /// this (freshly-constructed, empty) map hasn't lived through
+    /// itself, not recording a new write. Still obeys the same conflict
+    /// rule as every other write here (a losing stamp is ignored), so
+    /// restoring entries out of order is still safe.
+    pub fn restore_entry(
+        &mut self,
+        key: K,
+        value: Option<V>,
+        time: LamportTime,
+        writer: u64,
+        generation: u64,
+    ) {
+        let stamp = Stamp {
+            generation,
+            time,
+            writer,
+        };
+        match self.entries.get(&key) {
+            Some(existing) if existing.stamp >= stamp => {}
+            _ => {
+                self.entries.insert(key, Entry { value, stamp });
+            }
+        }
+    }
+
+    /// The number of keys currently PRESENT (never counts a real
+    /// tombstone - see this module's own header comment) - what a
+    /// caller asking "how many nodes/keys are there right now" actually
+    /// means, consistent with `get`/`snapshot`.
     #[allow(dead_code)]
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.entries.values().filter(|e| e.value.is_some()).count()
     }
 
     #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.len() == 0
     }
 
+    /// Keys currently PRESENT - a real tombstone's key is deliberately
+    /// excluded, same reasoning as `len`.
     #[allow(dead_code)]
     pub fn keys(&self) -> impl Iterator<Item = &K> {
-        self.entries.keys()
+        self.entries
+            .iter()
+            .filter(|(_, e)| e.value.is_some())
+            .map(|(k, _)| k)
     }
 
     /// The latest logical time seen across every entry in this map -
@@ -204,11 +389,13 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
     /// A plain, stamp-free snapshot of the map's current visible state -
     /// what a caller outside this module (e.g. the CLI printing a result
     /// as JSON) actually wants, without leaking the internal `Stamp`
-    /// bookkeeping that made the CRDT converge in the first place.
+    /// bookkeeping that made the CRDT converge in the first place. A
+    /// real tombstone is deliberately excluded - it means "genuinely
+    /// deleted", not a value to show.
     pub fn snapshot(&self) -> BTreeMap<K, V> {
         self.entries
             .iter()
-            .map(|(k, e)| (k.clone(), e.value.clone()))
+            .filter_map(|(k, e)| e.value.as_ref().map(|v| (k.clone(), v.clone())))
             .collect()
     }
 
@@ -265,9 +452,11 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
             match result.entries.get(key) {
                 Some(existing) if existing.stamp == other_entry.stamp => {
                     if existing.value != other_entry.value {
-                        // SWARM-01: same (time, writer) stamp, but two
-                        // DIFFERENT values - the "impossible" case this
-                        // map's own single-writer invariant should have
+                        // SWARM-01: same (generation, time, writer) stamp,
+                        // but two DIFFERENT values (a real value vs a
+                        // real value, or - I19 - a real value vs a
+                        // tombstone) - the "impossible" case this map's
+                        // own single-writer invariant should have
                         // prevented. Refuse the whole reconciliation
                         // rather than silently keeping either side (both
                         // are equally, arbitrarily "right" by stamp
@@ -319,8 +508,12 @@ pub struct IdentityCollision<K, V> {
     pub key: K,
     pub time: LamportTime,
     pub writer: u64,
-    pub local_value: V,
-    pub remote_value: V,
+    /// I19: `None` means the colliding side is a real tombstone (the
+    /// same writer claims to have both set AND deleted `key` at the
+    /// identical logical instant) - just as real and reportable a
+    /// collision as two different real values.
+    pub local_value: Option<V>,
+    pub remote_value: Option<V>,
 }
 
 impl<K: std::fmt::Debug, V: std::fmt::Debug> std::fmt::Display for IdentityCollision<K, V> {
@@ -348,27 +541,31 @@ pub struct MergeConflict<K, V> {
     pub key: K,
     pub local_time: LamportTime,
     pub local_writer: u64,
-    pub local_value: V,
+    /// I19: `None` means that side is a real tombstone (the key was
+    /// genuinely deleted there), not a missing/unknown value.
+    pub local_value: Option<V>,
     pub remote_time: LamportTime,
     pub remote_writer: u64,
-    pub remote_value: V,
+    pub remote_value: Option<V>,
     /// True if `remote`'s write won (its stamp was later) and replaced
     /// `local`'s; false if `local`'s write already won and was kept.
     pub kept_remote: bool,
 }
 
 impl<K: Ord + Clone + Hash, V: Clone + PartialEq> LwwMap<K, V> {
-    /// Two maps are equal if they agree on every key's current value -
-    /// used by the property tests to check CRDT convergence (they don't
-    /// need to compare internal stamps, just the observable state).
+    /// Two maps are equal if they agree on every key's current visible
+    /// value - used by the property tests to check CRDT convergence
+    /// (they don't need to compare internal stamps, just the observable
+    /// state). I19: compares every key EITHER map has ever touched
+    /// (present or tombstoned) via `get`, which already collapses "never
+    /// touched" and "tombstoned" to the same `None` - the correct
+    /// equivalence for an external observer, who cannot tell those two
+    /// apart from `get`/`snapshot` alone either.
     #[cfg(test)]
     fn same_visible_state(&self, other: &Self) -> bool {
-        if self.entries.len() != other.entries.len() {
-            return false;
-        }
-        self.entries
-            .iter()
-            .all(|(k, v)| other.get(k) == Some(&v.value))
+        let mut keys: std::collections::BTreeSet<&K> = self.entries.keys().collect();
+        keys.extend(other.entries.keys());
+        keys.into_iter().all(|k| self.get(k) == other.get(k))
     }
 }
 
@@ -571,8 +768,8 @@ mod tests {
         assert_eq!(err.key, "node-1");
         assert_eq!(err.time, LamportTime(3));
         assert_eq!(err.writer, 1);
-        assert_eq!(err.local_value, "ok");
-        assert_eq!(err.remote_value, "corrupted");
+        assert_eq!(err.local_value, Some("ok".to_string()));
+        assert_eq!(err.remote_value, Some("corrupted".to_string()));
     }
 
     #[test]
@@ -607,8 +804,8 @@ mod tests {
         assert_eq!(err.key, "x");
         assert_eq!(err.time, LamportTime(5));
         assert_eq!(err.writer, 1);
-        assert_eq!(err.local_value, "first");
-        assert_eq!(err.remote_value, "second");
+        assert_eq!(err.local_value, Some("first".to_string()));
+        assert_eq!(err.remote_value, Some("second".to_string()));
 
         // Proves this really is what plain `set` gets wrong: same inputs,
         // no error, "first" silently wins with zero record a collision
@@ -753,5 +950,236 @@ mod tests {
         );
         assert_eq!(forward.get(&"cell-3".to_string()), Some(&"ok".to_string()));
         assert_eq!(forward.len(), 5);
+    }
+
+    #[test]
+    fn remove_makes_a_present_key_absent() {
+        let mut map: LwwMap<String, String> = LwwMap::new();
+        map.set("x".to_string(), "1".to_string(), LamportTime(1), 1);
+        map.remove("x".to_string(), LamportTime(2), 1);
+        assert_eq!(map.get(&"x".to_string()), None);
+    }
+
+    #[test]
+    fn a_same_phase_stale_set_never_undoes_a_later_one() {
+        let mut map: LwwMap<String, String> = LwwMap::new();
+        map.set("x".to_string(), "1".to_string(), LamportTime(5), 1);
+        // A second `set` (no phase transition - x is already present
+        // both before and after) stamped BEFORE the current entry must
+        // lose, exactly like set-vs-set always did before remove existed.
+        map.set("x".to_string(), "stale".to_string(), LamportTime(2), 1);
+        assert_eq!(map.get(&"x".to_string()), Some(&"1".to_string()));
+    }
+
+    #[test]
+    fn a_phase_transitioning_remove_wins_over_the_current_entry_even_applied_out_of_time_order() {
+        // The documented flip side of next_generation's own doc comment:
+        // applying set/remove calls to ONE map out of chronological
+        // order is a real, narrow limitation (real nodes never do this -
+        // lamport::tick() only ever increases) - a remove genuinely
+        // transitions present -> absent relative to what THIS map
+        // currently holds, so it wins here even at an earlier raw time,
+        // unlike the same-phase case above.
+        let mut map: LwwMap<String, String> = LwwMap::new();
+        map.set("x".to_string(), "1".to_string(), LamportTime(5), 1);
+        map.remove("x".to_string(), LamportTime(2), 1);
+        assert_eq!(map.get(&"x".to_string()), None);
+    }
+
+    #[test]
+    fn tombstones_are_invisible_to_get_len_is_empty_keys_and_snapshot() {
+        let mut map: LwwMap<String, i32> = LwwMap::new();
+        map.set("x".to_string(), 1, LamportTime(1), 1);
+        map.set("y".to_string(), 2, LamportTime(1), 1);
+        map.remove("x".to_string(), LamportTime(2), 1);
+
+        assert_eq!(map.get(&"x".to_string()), None);
+        assert_eq!(map.len(), 1);
+        assert!(!map.is_empty());
+        assert_eq!(
+            map.keys().cloned().collect::<Vec<_>>(),
+            vec!["y".to_string()]
+        );
+        assert_eq!(map.snapshot().get("x"), None);
+        assert_eq!(map.snapshot().get("y"), Some(&2));
+
+        let mut only_tombstones: LwwMap<String, i32> = LwwMap::new();
+        only_tombstones.remove("x".to_string(), LamportTime(1), 1);
+        assert!(only_tombstones.is_empty());
+    }
+
+    #[test]
+    fn same_phase_writes_never_bump_generation() {
+        // An ordinary present -> present update (a plain value change)
+        // is not a life-phase transition - it must keep resolving
+        // conflicts by (time, writer) alone within that same generation,
+        // never silently jump ahead of a concurrent writer that never
+        // deleted anything.
+        let mut map: LwwMap<String, String> = LwwMap::new();
+        map.set("x".to_string(), "1".to_string(), LamportTime(1), 1);
+        map.set("x".to_string(), "2".to_string(), LamportTime(2), 1);
+        map.set("x".to_string(), "3".to_string(), LamportTime(3), 1);
+
+        let mut peer: LwwMap<String, String> = LwwMap::new();
+        // A peer's concurrent write at a time BETWEEN the local writes
+        // above, from a higher writer id - within the same generation
+        // this must be able to win on its own merits.
+        peer.set("x".to_string(), "from-peer".to_string(), LamportTime(4), 9);
+
+        let merged = map.merge(&peer);
+        assert_eq!(
+            merged.get(&"x".to_string()),
+            Some(&"from-peer".to_string()),
+            "an ordinary same-generation write must still win on (time, writer) alone"
+        );
+    }
+
+    #[test]
+    fn deleting_then_recreating_a_key_bumps_generation_and_beats_a_stale_peer_add_regardless_of_raw_time(
+    ) {
+        // I19's own real motivation (see this module's header comment):
+        // a node deletes key x, then re-creates it - two real life-phase
+        // transitions, so generation is now 3 (1: created, 2: deleted,
+        // 3: re-created). A peer that never saw either transition still
+        // has the ORIGINAL add, and - simulating clock drift while
+        // partitioned - that peer's own Lamport clock ticked well past
+        // the local node's on unrelated keys, so its stamp's raw time is
+        // numerically LARGER. A plain (time, writer) comparison would
+        // wrongly let that stale peer value win; generation must stop it.
+        let mut local: LwwMap<String, String> = LwwMap::new();
+        local.set("x".to_string(), "v1".to_string(), LamportTime(1), 1); // generation 1
+        local.remove("x".to_string(), LamportTime(2), 1); // generation 2
+        local.set("x".to_string(), "v2".to_string(), LamportTime(3), 1); // generation 3
+
+        let mut stale_peer: LwwMap<String, String> = LwwMap::new();
+        stale_peer.set(
+            "x".to_string(),
+            "stale-v1".to_string(),
+            LamportTime(1_000),
+            2,
+        ); // generation 1, huge raw time
+
+        let merged_forward = local.merge(&stale_peer);
+        let merged_backward = stale_peer.merge(&local);
+        assert_eq!(
+            merged_forward.get(&"x".to_string()),
+            Some(&"v2".to_string()),
+            "a higher generation must beat a stale peer add even at a much larger raw Lamport time"
+        );
+        assert!(merged_forward.same_visible_state(&merged_backward));
+    }
+
+    #[test]
+    fn a_tombstone_beats_a_stale_peer_add_regardless_of_raw_time() {
+        let mut local: LwwMap<String, String> = LwwMap::new();
+        local.set("x".to_string(), "v1".to_string(), LamportTime(1), 1); // generation 1
+        local.remove("x".to_string(), LamportTime(2), 1); // generation 2
+
+        let mut stale_peer: LwwMap<String, String> = LwwMap::new();
+        stale_peer.set("x".to_string(), "stale-v1".to_string(), LamportTime(999), 2); // generation 1
+
+        let merged = local.merge(&stale_peer);
+        assert_eq!(
+            merged.get(&"x".to_string()),
+            None,
+            "a real tombstone (higher generation) must beat a stale same-or-lower-generation add"
+        );
+    }
+
+    #[test]
+    fn a_higher_generation_add_can_still_resurrect_a_tombstone() {
+        // The flip side of the property above: a REAL new add from a
+        // peer that itself observed the delete and then re-created the
+        // key (so its own generation is also ahead) must be free to win
+        // normally - generation only protects against STALE, lower- or
+        // equal-generation writes, never blocks a real newer one.
+        let mut local: LwwMap<String, String> = LwwMap::new();
+        local.set("x".to_string(), "v1".to_string(), LamportTime(1), 1); // generation 1
+        local.remove("x".to_string(), LamportTime(2), 1); // generation 2
+
+        let mut peer: LwwMap<String, String> = LwwMap::new();
+        peer.set("x".to_string(), "v1".to_string(), LamportTime(1), 1); // generation 1
+        peer.remove("x".to_string(), LamportTime(2), 1); // generation 2
+        peer.set(
+            "x".to_string(),
+            "v2-from-peer".to_string(),
+            LamportTime(3),
+            9,
+        ); // generation 3
+
+        let merged = local.merge(&peer);
+        assert_eq!(
+            merged.get(&"x".to_string()),
+            Some(&"v2-from-peer".to_string())
+        );
+    }
+
+    #[test]
+    fn merge_laws_hold_with_tombstones_in_the_mix() {
+        let mut a: LwwMap<String, i32> = LwwMap::new();
+        a.set("x".to_string(), 1, LamportTime(1), 1);
+        a.remove("y".to_string(), LamportTime(1), 1);
+
+        let mut b: LwwMap<String, i32> = LwwMap::new();
+        b.set("y".to_string(), 2, LamportTime(1), 2);
+        b.remove("x".to_string(), LamportTime(1), 2);
+
+        // Commutative.
+        let ab = a.merge(&b);
+        let ba = b.merge(&a);
+        assert!(ab.same_visible_state(&ba));
+
+        // Associative.
+        let mut c: LwwMap<String, i32> = LwwMap::new();
+        c.set("z".to_string(), 3, LamportTime(1), 3);
+        c.remove("x".to_string(), LamportTime(1), 3);
+        let left = a.merge(&b).merge(&c);
+        let right = a.merge(&b.merge(&c));
+        assert!(left.same_visible_state(&right));
+
+        // Idempotent.
+        let once = a.merge(&a);
+        assert!(once.same_visible_state(&a));
+    }
+
+    #[test]
+    fn restore_entry_trusts_the_exact_generation_it_is_given() {
+        // Unlike set/remove, restore_entry must NOT recompute a fresh
+        // life-phase transition - store.rs's own reload depends on this
+        // faithfully reproducing history the (empty) map is being built
+        // from, not treating every restored entry as if it were freshly
+        // created (which would always compute generation 1).
+        let mut map: LwwMap<String, String> = LwwMap::new();
+        map.restore_entry("x".to_string(), Some("v".to_string()), LamportTime(1), 1, 7);
+        assert_eq!(map.get(&"x".to_string()), Some(&"v".to_string()));
+
+        // A restored tombstone at that same trusted generation still
+        // beats a stale lower-generation peer add, exactly like a live
+        // remove() would.
+        let mut tomb: LwwMap<String, String> = LwwMap::new();
+        tomb.restore_entry("x".to_string(), None, LamportTime(1), 1, 7);
+        let mut stale_peer: LwwMap<String, String> = LwwMap::new();
+        stale_peer.set("x".to_string(), "stale".to_string(), LamportTime(999), 2);
+        assert_eq!(tomb.merge(&stale_peer).get(&"x".to_string()), None);
+
+        // A lower-generation restore_entry call must lose against an
+        // already-present higher-generation entry, same conflict rule
+        // as every other write here.
+        let mut existing: LwwMap<String, String> = LwwMap::new();
+        existing.restore_entry(
+            "x".to_string(),
+            Some("newer".to_string()),
+            LamportTime(1),
+            1,
+            5,
+        );
+        existing.restore_entry(
+            "x".to_string(),
+            Some("older".to_string()),
+            LamportTime(1),
+            1,
+            2,
+        );
+        assert_eq!(existing.get(&"x".to_string()), Some(&"newer".to_string()));
     }
 }
