@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/Accuracy-<100ns-green.svg" alt="Accuracy">
 </p>
 
-**Honesty check - what actually runs today:** the Lamport logical clock (`src/lamport.rs`), the LWW-Element-Map CRDT with a merge proven commutative/associative/idempotent by property tests, not just eyeballed on one example (`src/crdt.rs`), the reconciliation logic shared between the CLI and the server (`src/reconcile.rs`), the real crash-safe per-node persistence (`src/store.rs`, `--state-file`, verified against an actual killed-and-relaunched binary), and the JSON/HTTP server exposing all of it (`src/server.rs`, `tiny_http`, `POST /reconcile`, `GET /stats`) are real and tested (39 tests, `cargo test`), including a 4-cell simulation proving convergence across multiple rounds of partition and partial reconnection. What is NOT real: PTP (IEEE 1588) hardware timestamping, the sub-100ns accuracy this README's own badge and "Ultra-Precise Sync"/"Hardware Timestamping" bullets describe - there is no PTP code anywhere in this crate, and it stays deferred until there is real NIC/hardware-timer hardware to validate it against (see ARCHITECTURE below). What exists and is tested today is the logical (Lamport) clock the CRDT merge actually needs, not wall-clock hardware synchronization. See `CHANGELOG.md` for exactly what has shipped so far, and the ROADMAP below for what remains open.
+**Honesty check - what actually runs today:** the Lamport logical clock (`src/lamport.rs`), the LWW-Element-Map CRDT with a merge proven commutative/associative/idempotent by property tests, not just eyeballed on one example (`src/crdt.rs`), the reconciliation logic shared between the CLI and the server (`src/reconcile.rs`), the real crash-safe per-node persistence (`src/store.rs`, `--state-file`, verified against an actual killed-and-relaunched binary), and the JSON/HTTP server exposing all of it (`src/server.rs`, `tiny_http`, `POST /reconcile`, `GET /stats`) are real and tested (51 tests, `cargo test`), including a 4-cell simulation proving convergence across multiple rounds of partition and partial reconnection. What is NOT real: PTP (IEEE 1588) hardware timestamping, the sub-100ns accuracy this README's own badge and "Ultra-Precise Sync"/"Hardware Timestamping" bullets describe - there is no PTP code anywhere in this crate, and it stays deferred until there is real NIC/hardware-timer hardware to validate it against (see ARCHITECTURE below). What exists and is tested today is the logical (Lamport) clock the CRDT merge actually needs, not wall-clock hardware synchronization. See `CHANGELOG.md` for exactly what has shipped so far, and the ROADMAP below for what remains open.
 
 ---
 
@@ -157,7 +157,7 @@ cargo test   # the Lamport clock, and the CRDT itself - including direct
              # deterministic-tie-break test for truly concurrent writes,
              # merge_report()'s own conflict-detection behavior, and a
              # 4-cell simulation proving convergence across multiple
-             # rounds of partition and partial reconnection - 39 tests total
+             # rounds of partition and partial reconnection - 51 tests total
 ```
 
 The same `reconcile()` call is also reachable over a real JSON/HTTP API

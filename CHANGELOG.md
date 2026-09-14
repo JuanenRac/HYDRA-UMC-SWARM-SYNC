@@ -18,6 +18,49 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.0.9] - I19: real tombstone (delete) support with generation-guarded conflict resolution
+
+`LwwMap` gains a real, first-class delete instead of merely absent-vs-
+present-in-`entries`:
+
+- **`Entry.value` is now `Option<V>`** - `None` is a real tombstone, not
+  "this key never existed". `get`/`len`/`is_empty`/`keys`/`snapshot`
+  all stay tombstone-invisible, matching their pre-existing contract.
+- **`LwwMap::remove(key, time, writer)`** - the real counterpart to
+  `set`, obeying the exact same conflict rule (a losing stamp is
+  ignored).
+- **`Stamp` grows a `generation: u64` field**, declared first so it
+  stays the PRIMARY sort key. `generation` increments only on a real
+  create/delete life-phase TRANSITION for a key, never on an ordinary
+  same-phase update - this is what actually stops a stale peer's add
+  from resurrecting a real delete after a merge, something raw Lamport
+  time alone cannot do: a peer that deleted-then-recreated a key twice
+  (generation 3) now always beats a peer still holding a stale add from
+  generation 1, even when that stale add's own raw time is numerically
+  higher purely from clock drift on unrelated keys while partitioned.
+  `merge()`'s own commutative/associative/idempotent join-semilattice
+  laws needed no logic changes at all - prepending a field to an
+  already-totally-ordered `Stamp` tuple keeps it a total order.
+- **`entries_with_stamps()`/`restore_entry()`** - the real save/reload
+  contract `store.rs` needs to survive a process restart without losing
+  a tombstone or resetting a generation (a fresh stamp on reload would
+  let a stale write the pre-restart map had already correctly beaten
+  wrongly win afterward). `store.rs`'s own `PersistedEntry` now carries
+  `value: Option<String>` and `generation`, and `load()` uses
+  `restore_entry` instead of `set` to replay history faithfully rather
+  than recording a fresh write.
+- 12 new `LwwMap` unit tests (tombstone visibility, generation-guarded
+  merge in both directions, the documented ordering assumption behind
+  `next_generation`, `restore_entry`'s exact-stamp trust) and 3 new
+  `store.rs` tests (a real deletion survives save/load as a tombstone,
+  and still beats a stale remote add after a real restart). 51/51 tests
+  pass, `cargo fmt --check` + `clippy -D warnings` clean.
+- **Known, deliberate gap:** `remove()` is not yet reachable from a real
+  request - `reconcile.rs`'s own `Cell`/`Write` contract has no way to
+  express "this write is a delete" yet. Wiring a real delete into the
+  actual `/reconcile` request contract is separate, larger scope left
+  for later, not invented here without a real reference for its shape.
+
 ## [0.0.8] - H036: a same-stamp collision inside one cell no longer disappears silently
 
 - `build_cell_map()` used plain `LwwMap::set` to build one cell's own

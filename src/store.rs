@@ -29,15 +29,23 @@ use crate::crdt::LwwMap;
 use crate::lamport::LamportTime;
 
 /// The real, on-disk shape of one persisted entry - key/value plus the
-/// exact stamp (time, writer) `crdt::LwwMap::entries_with_stamps` reports,
-/// so reloading it re-establishes the SAME conflict-resolution state a
-/// live map already converged to, not a fresh one.
+/// exact (generation, time, writer) stamp
+/// `crdt::LwwMap::entries_with_stamps` reports, so reloading it
+/// re-establishes the SAME conflict-resolution state a live map already
+/// converged to, not a fresh one.
+///
+/// I19: `value` is `None` for a real tombstone (a key this node deleted
+/// via `LwwMap::remove`) - persisting only present entries would forget
+/// every real deletion on restart, reopening the exact resurrection
+/// `crdt.rs`'s own header comment describes the first time this node
+/// reconnects to a peer that still has the pre-delete value.
 #[derive(Serialize, Deserialize)]
 struct PersistedEntry {
     key: String,
-    value: String,
+    value: Option<String>,
     time: u64,
     writer: u64,
+    generation: u64,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -61,11 +69,16 @@ pub fn load(path: &Path) -> io::Result<LwwMap<String, String>> {
     let state: PersistedState =
         serde_json::from_str(&raw).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     for entry in state.entries {
-        map.set(
+        // I19: restore_entry, not set - this replays each entry's own
+        // exact prior stamp (tombstone included), never records a fresh
+        // life-phase transition for it. See LwwMap::restore_entry's own
+        // doc comment for why that distinction matters.
+        map.restore_entry(
             entry.key,
             entry.value,
             LamportTime(entry.time),
             entry.writer,
+            entry.generation,
         );
     }
     Ok(map)
@@ -84,11 +97,12 @@ pub fn save(path: &Path, map: &LwwMap<String, String>) -> io::Result<()> {
         entries: map
             .entries_with_stamps()
             .into_iter()
-            .map(|(key, value, time, writer)| PersistedEntry {
+            .map(|(key, value, time, writer, generation)| PersistedEntry {
                 key,
                 value,
                 time: time.0,
                 writer,
+                generation,
             })
             .collect(),
     };
@@ -177,6 +191,89 @@ mod tests {
         assert!(
             leftover.is_empty(),
             "expected no leftover temp file, found: {leftover:?}"
+        );
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_real_deletion_survives_save_then_load_as_a_tombstone() {
+        // I19: before tombstones existed, save() only ever wrote PRESENT
+        // entries, so a real remove() was indistinguishable on disk from
+        // a key that had simply never existed - reload lost the
+        // deletion outright.
+        let dir = std::env::temp_dir().join(format!(
+            "swarm-sync-test-{}-{}",
+            std::process::id(),
+            "tombstone-roundtrip"
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("state.json");
+
+        let mut map: LwwMap<String, String> = LwwMap::new();
+        map.set("x".to_string(), "1".to_string(), LamportTime(1), 1);
+        map.remove("x".to_string(), LamportTime(2), 1);
+        assert_eq!(
+            map.get(&"x".to_string()),
+            None,
+            "removed before save at all"
+        );
+
+        save(&path, &map).expect("save must succeed");
+        let reloaded = load(&path).expect("load must succeed");
+        assert_eq!(
+            reloaded.get(&"x".to_string()),
+            None,
+            "a real deletion must still be gone after a restart, not resurrected"
+        );
+        assert!(
+            reloaded.is_empty(),
+            "a tombstone-only map must still report as empty (len/is_empty never count tombstones)"
+        );
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_reloaded_tombstone_still_beats_a_stale_remote_add_after_restart() {
+        // I19's own real motivation: a node deletes a key, restarts (the
+        // exact moment this module's own persistence matters), then
+        // reconnects to a peer whose own copy is still the stale,
+        // pre-delete value. Without generation surviving the restart
+        // too, a bare (time, writer) stamp comparison could let that
+        // stale remote add win back in - this proves it can't.
+        let dir = std::env::temp_dir().join(format!(
+            "swarm-sync-test-{}-{}",
+            std::process::id(),
+            "tombstone-outlives-restart"
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("state.json");
+
+        let mut map: LwwMap<String, String> = LwwMap::new();
+        map.set("x".to_string(), "1".to_string(), LamportTime(1), 1);
+        map.remove("x".to_string(), LamportTime(2), 1);
+        save(&path, &map).expect("save must succeed");
+        let reloaded = load(&path).expect("load must succeed");
+
+        // The stale peer: still has the pre-delete value, stamped at a
+        // LATER raw Lamport time than the local delete (e.g. it kept
+        // ticking its clock on unrelated keys while partitioned) - a
+        // plain (time, writer) comparison alone would wrongly let this
+        // win.
+        let mut stale_peer: LwwMap<String, String> = LwwMap::new();
+        stale_peer.set(
+            "x".to_string(),
+            "stale-value".to_string(),
+            LamportTime(99),
+            2,
+        );
+
+        let merged = reloaded.merge(&stale_peer);
+        assert_eq!(
+            merged.get(&"x".to_string()),
+            None,
+            "a reloaded tombstone must still beat a stale remote add, even across a restart"
         );
 
         fs::remove_dir_all(&dir).ok();
