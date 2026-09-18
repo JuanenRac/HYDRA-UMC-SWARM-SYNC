@@ -18,6 +18,17 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.1.0] - Real opt-in mutual authentication for /reconcile and /state
+
+- Before this, any caller on the same network as a node could `POST
+  /reconcile` fabricated cell state into it, or read its full state via
+  `GET /state`, with no way at all to tell who was calling. `SWARM_SYNC_SHARED_SECRET`
+  (env var only, no CLI flag) now gates both routes behind a real,
+  constant-time-compared `Authorization: Bearer <token>` check when set.
+  Unset, behavior is unchanged - the same LAN-trust posture this project
+  has documented from the start. `GET /stats` stays open either way. 7
+  new tests (58 total, up from 51).
+
 ## [0.0.9] - I19: real tombstone (delete) support with generation-guarded conflict resolution
 
 `LwwMap` gains a real, first-class delete instead of merely absent-vs-

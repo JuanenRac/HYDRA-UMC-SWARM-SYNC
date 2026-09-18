@@ -34,6 +34,55 @@ fn json_header() -> Header {
     Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap()
 }
 
+/// Real gap this closes: `/reconcile` and `/state` had no way at all to
+/// tell which node (or anyone else on the same LAN) is talking to them -
+/// any caller could inject fabricated cell state into another node's own
+/// CRDT, or read it. Opt-in via `shared_secret` (see `SWARM_SYNC_SHARED_SECRET`
+/// in main.rs): `None` keeps this server's exact prior behavior (no
+/// caller authentication at all, matching the LAN-trust posture this
+/// project has documented from the start); `Some` requires a matching
+/// `Authorization: Bearer <secret>` header on every `/reconcile` and
+/// `/state` request, `/stats` stays open either way (a harmless
+/// diagnostic, same reasoning as this ecosystem's other services keeping
+/// a bare liveness/status route unauthenticated).
+fn is_authorized(request: &tiny_http::Request, shared_secret: &Option<String>) -> bool {
+    let Some(secret) = shared_secret else {
+        return true;
+    };
+    let presented = request
+        .headers()
+        .iter()
+        .find(|h| {
+            h.field
+                .as_str()
+                .as_str()
+                .eq_ignore_ascii_case("Authorization")
+        })
+        .map(|h| h.value.as_str());
+    match presented.and_then(|v| v.strip_prefix("Bearer ")) {
+        Some(token) => constant_time_eq(token.as_bytes(), secret.as_bytes()),
+        None => false,
+    }
+}
+
+/// A naive `==` on the raw token would let an attacker measure how many
+/// leading bytes matched via response-time differences (a real, if slow,
+/// side channel against a long-lived shared secret) - this always
+/// compares every byte of the longer operand regardless of where the
+/// first mismatch is, and folds a length mismatch into the same
+/// constant-time path rather than short-circuiting on it.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    let len_ok = a.len() == b.len();
+    let compare_len = a.len().max(b.len());
+    let mut diff: u8 = if len_ok { 0 } else { 1 };
+    for i in 0..compare_len {
+        let x = a.get(i).copied().unwrap_or(0);
+        let y = b.get(i).copied().unwrap_or(0);
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 fn write_json(request: tiny_http::Request, status: u16, body: &serde_json::Value) {
     let text = body.to_string();
     let response = Response::from_string(text)
@@ -52,7 +101,7 @@ pub fn bind(addr: &str) -> std::io::Result<Server> {
 /// real, supported mode - a short-lived test/demo instance with nothing
 /// worth surviving a restart), same as before this pass, just no longer
 /// the only mode.
-pub fn run(server: Server, state_path: Option<PathBuf>) {
+pub fn run(server: Server, state_path: Option<PathBuf>, shared_secret: Option<String>) {
     let mut state: LwwMap<String, String> = match &state_path {
         Some(path) => match store::load(path) {
             Ok(map) => map,
@@ -79,11 +128,27 @@ pub fn run(server: Server, state_path: Option<PathBuf>) {
             continue;
         }
         if path == "/state" && request.method() == &Method::Get {
+            if !is_authorized(&request, &shared_secret) {
+                write_json(
+                    request,
+                    401,
+                    &json!({"error": "missing or invalid Authorization: Bearer <token>"}),
+                );
+                continue;
+            }
             write_json(request, 200, &json!(state.snapshot()));
             continue;
         }
         if path != "/reconcile" || request.method() != &Method::Post {
             write_json(request, 404, &json!({"error": "not found"}));
+            continue;
+        }
+        if !is_authorized(&request, &shared_secret) {
+            write_json(
+                request,
+                401,
+                &json!({"error": "missing or invalid Authorization: Bearer <token>"}),
+            );
             continue;
         }
 
@@ -146,20 +211,34 @@ mod tests {
     }
 
     fn start_test_server_with_state(state_path: Option<std::path::PathBuf>) -> u16 {
+        start_test_server_full(state_path, None)
+    }
+
+    fn start_test_server_full(
+        state_path: Option<std::path::PathBuf>,
+        shared_secret: Option<String>,
+    ) -> u16 {
         let server = bind("127.0.0.1:0").expect("bind on an OS-assigned port must succeed");
         let port = server
             .server_addr()
             .to_ip()
             .expect("tiny_http always binds a real IP socket for an http:// server")
             .port();
-        thread::spawn(move || run(server, state_path));
+        thread::spawn(move || run(server, state_path, shared_secret));
         port
     }
 
     fn post(port: u16, path: &str, body: &str) -> (u16, String) {
+        post_with_auth(port, path, body, None)
+    }
+
+    fn post_with_auth(port: u16, path: &str, body: &str, bearer: Option<&str>) -> (u16, String) {
         let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect must succeed");
+        let auth_header = bearer
+            .map(|t| format!("Authorization: Bearer {t}\r\n"))
+            .unwrap_or_default();
         let request = format!(
-            "POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            "POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n{auth_header}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         );
         stream.write_all(request.as_bytes()).unwrap();
@@ -176,9 +255,17 @@ mod tests {
     }
 
     fn get(port: u16, path: &str) -> (u16, String) {
+        get_with_auth(port, path, None)
+    }
+
+    fn get_with_auth(port: u16, path: &str, bearer: Option<&str>) -> (u16, String) {
         let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("connect must succeed");
-        let request =
-            format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+        let auth_header = bearer
+            .map(|t| format!("Authorization: Bearer {t}\r\n"))
+            .unwrap_or_default();
+        let request = format!(
+            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n{auth_header}Connection: close\r\n\r\n"
+        );
         stream.write_all(request.as_bytes()).unwrap();
         let mut raw = String::new();
         stream.read_to_string(&mut raw).unwrap();
@@ -425,5 +512,83 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // Real gap this pass closes: before this, ANY caller on the network
+    // could inject fabricated cell state into a node's own CRDT with no
+    // way at all to tell who sent it. These lock in the opt-in behavior:
+    // unset SWARM_SYNC_SHARED_SECRET keeps every prior test above passing
+    // unchanged; set, both /reconcile and /state require a matching
+    // Authorization: Bearer <token>.
+    #[test]
+    fn reconcile_is_open_when_no_shared_secret_is_configured() {
+        let port = start_test_server();
+        let (status, _) = post(
+            port,
+            "/reconcile",
+            r#"{"cells": [{"id": "cell-a", "writer": 1, "writes": [{"key": "x", "value": "1", "time": 1}]}]}"#,
+        );
+        assert_eq!(status, 200);
+    }
+
+    #[test]
+    fn reconcile_rejects_a_missing_bearer_token_when_a_shared_secret_is_configured() {
+        let port = start_test_server_full(None, Some("s3cr3t".to_string()));
+        let (status, _) = post(
+            port,
+            "/reconcile",
+            r#"{"cells": [{"id": "cell-a", "writer": 1, "writes": [{"key": "x", "value": "1", "time": 1}]}]}"#,
+        );
+        assert_eq!(status, 401);
+    }
+
+    #[test]
+    fn reconcile_rejects_a_wrong_bearer_token() {
+        let port = start_test_server_full(None, Some("s3cr3t".to_string()));
+        let (status, _) = post_with_auth(
+            port,
+            "/reconcile",
+            r#"{"cells": [{"id": "cell-a", "writer": 1, "writes": [{"key": "x", "value": "1", "time": 1}]}]}"#,
+            Some("wrong-secret"),
+        );
+        assert_eq!(status, 401);
+    }
+
+    #[test]
+    fn reconcile_accepts_the_correct_bearer_token() {
+        let port = start_test_server_full(None, Some("s3cr3t".to_string()));
+        let (status, body) = post_with_auth(
+            port,
+            "/reconcile",
+            r#"{"cells": [{"id": "cell-a", "writer": 1, "writes": [{"key": "x", "value": "1", "time": 1}]}]}"#,
+            Some("s3cr3t"),
+        );
+        assert_eq!(status, 200);
+        assert!(body.contains("\"converged\":true"));
+    }
+
+    #[test]
+    fn state_is_also_gated_by_the_same_shared_secret() {
+        let port = start_test_server_full(None, Some("s3cr3t".to_string()));
+        let (unauthed_status, _) = get(port, "/state");
+        assert_eq!(unauthed_status, 401);
+        let (authed_status, _) = get_with_auth(port, "/state", Some("s3cr3t"));
+        assert_eq!(authed_status, 200);
+    }
+
+    #[test]
+    fn stats_stays_open_regardless_of_shared_secret_configuration() {
+        let port = start_test_server_full(None, Some("s3cr3t".to_string()));
+        let (status, _) = get(port, "/stats");
+        assert_eq!(status, 200);
+    }
+
+    #[test]
+    fn constant_time_eq_matches_equal_and_rejects_unequal_or_mismatched_length() {
+        assert!(constant_time_eq(b"abc", b"abc"));
+        assert!(!constant_time_eq(b"abc", b"abd"));
+        assert!(!constant_time_eq(b"abc", b"abcd"));
+        assert!(!constant_time_eq(b"", b"a"));
+        assert!(constant_time_eq(b"", b""));
     }
 }
