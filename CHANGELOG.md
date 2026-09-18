@@ -29,7 +29,7 @@ semantic-versioning judgment calls:
   has documented from the start. `GET /stats` stays open either way. 7
   new tests (58 total, up from 51).
 
-## [0.0.9] - I19: real tombstone (delete) support with generation-guarded conflict resolution
+## [0.0.9] - Real tombstone (delete) support with generation-guarded conflict resolution
 
 `LwwMap` gains a real, first-class delete instead of merely absent-vs-
 present-in-`entries`:
@@ -72,12 +72,12 @@ present-in-`entries`:
   actual `/reconcile` request contract is separate, larger scope left
   for later, not invented here without a real reference for its shape.
 
-## [0.0.8] - H036: a same-stamp collision inside one cell no longer disappears silently
+## [0.0.8] - A same-stamp collision inside one cell no longer disappears silently
 
 - `build_cell_map()` used plain `LwwMap::set` to build one cell's own
   local map from its `writes` list - two writes for the SAME key at the
   identical (time, writer) stamp but DIFFERENT values (the real
-  "impossible conflict" SWARM-01 already refuses when it happens ACROSS
+  "impossible conflict" already refused elsewhere when it happens ACROSS
   two cells) silently kept whichever was listed first and discarded the
   other with no trace, entirely before the cross-cell merge this
   project's own `reconcile_with_prior()` performs ever got a chance to
@@ -94,9 +94,9 @@ present-in-`entries`:
   `/reconcile` tests, including permuting the two colliding writes and
   confirming a true idempotent duplicate still merges cleanly.
 
-## [0.0.7] - Rejects an "impossible" merge conflict instead of silently diverging (SWARM-01)
+## [0.0.7] - Rejects an "impossible" merge conflict instead of silently diverging
 
-A real gap (P2):
+A real gap:
 
 - **`LwwMap::merge_report`** now detects the one case the CRDT's own
   single-writer invariant should make impossible: two entries carrying
