@@ -52,6 +52,17 @@ fn run_serve(args: &[String]) -> ExitCode {
     let state_path = find_flag(args, "--state-file")
         .or_else(|| env::var("SWARM_SYNC_STATE_FILE").ok())
         .map(std::path::PathBuf::from);
+    // Opt-in mutual authentication between nodes (see server.rs's own
+    // is_authorized() for the full rationale) - unset keeps this node's
+    // exact prior behavior (any caller on the LAN can reconcile/read
+    // state), matching this project's documented LAN-trust posture; set,
+    // every /reconcile and /state call must carry a matching
+    // Authorization: Bearer <token>. Env var only, deliberately no CLI
+    // flag - a shared secret belongs in the environment/systemd unit,
+    // never in a process listing any local user can read via `ps`.
+    let shared_secret = env::var("SWARM_SYNC_SHARED_SECRET")
+        .ok()
+        .filter(|s| !s.is_empty());
 
     match server::bind(&bind_addr) {
         Ok(bound) => {
@@ -63,7 +74,11 @@ fn run_serve(args: &[String]) -> ExitCode {
                     "[swarm-sync] --state-file not set: memory-only, this node's state does NOT survive a restart"
                 ),
             }
-            server::run(bound, state_path);
+            match &shared_secret {
+                Some(_) => eprintln!("[swarm-sync] SWARM_SYNC_SHARED_SECRET set: /reconcile and /state require a matching Authorization: Bearer <token>"),
+                None => eprintln!("[swarm-sync] SWARM_SYNC_SHARED_SECRET not set: /reconcile and /state have NO caller authentication (LAN-trust mode)"),
+            }
+            server::run(bound, state_path, shared_secret);
             ExitCode::SUCCESS
         }
         Err(e) => {
