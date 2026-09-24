@@ -101,7 +101,37 @@ pub fn bind(addr: &str) -> std::io::Result<Server> {
 /// real, supported mode - a short-lived test/demo instance with nothing
 /// worth surviving a restart), same as before this pass, just no longer
 /// the only mode.
+/// What this node can say about its own synchronization: how many
+/// reconciliations it completed, how many conflicts they resolved, when the
+/// last one finished and which write won the most recent conflict.
+#[derive(Default)]
+struct SyncEvidence {
+    reconciles: u64,
+    conflicts_total: u64,
+    last_reconcile_ms: Option<u64>,
+    last_conflict: Option<serde_json::Value>,
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+impl SyncEvidence {
+    fn to_json(&self, now: u64) -> serde_json::Value {
+        json!({
+            "reconciles": self.reconciles,
+            "conflictsResolved": self.conflicts_total,
+            "lastReconcileAgeMs": self.last_reconcile_ms.map(|t| now.saturating_sub(t)),
+            "lastConflict": self.last_conflict,
+        })
+    }
+}
+
 pub fn run(server: Server, state_path: Option<PathBuf>, shared_secret: Option<String>) {
+    let mut evidence = SyncEvidence::default();
     let mut state: LwwMap<String, String> = match &state_path {
         Some(path) => match store::load(path) {
             Ok(map) => map,
@@ -123,6 +153,7 @@ pub fn run(server: Server, state_path: Option<PathBuf>, shared_secret: Option<St
                 &json!({
                     "role": "CRDT swarm state reconciliation",
                     "persistent": state_path.is_some(),
+                    "sync": evidence.to_json(now_ms()),
                 }),
             );
             continue;
@@ -192,6 +223,21 @@ pub fn run(server: Server, state_path: Option<PathBuf>, shared_secret: Option<St
                     }
                 }
                 state = merged;
+                evidence.reconciles += 1;
+                evidence.conflicts_total += output.conflicts_resolved as u64;
+                evidence.last_reconcile_ms = Some(now_ms());
+                if let Some(conflict) = output.conflicts.last() {
+                    let (winner, loser) = if conflict.kept_remote {
+                        (conflict.remote_writer, conflict.local_writer)
+                    } else {
+                        (conflict.local_writer, conflict.remote_writer)
+                    };
+                    evidence.last_conflict = Some(json!({
+                        "key": conflict.key,
+                        "winnerWriter": winner,
+                        "loserWriter": loser,
+                    }));
+                }
                 write_json(request, 200, &serde_json::to_value(&output).unwrap());
             }
             Err(e) => write_json(request, 400, &json!({"error": e.to_string()})),
@@ -290,6 +336,27 @@ mod tests {
         assert_eq!(status, 200);
         assert!(body.contains("\"converged\":true"));
         assert!(body.contains("\"cells_merged\":2"));
+    }
+
+    #[test]
+    fn stats_report_conflicts_the_winning_writer_and_sync_age() {
+        let port = start_test_server();
+        let (_, before) = get(port, "/stats");
+        assert!(before.contains("\"reconciles\":0"), "{before}");
+        assert!(before.contains("\"lastReconcileAgeMs\":null"), "{before}");
+        let scenario = r#"{"cells": [
+            {"id": "cell-a", "writer": 1, "writes": [{"key": "x", "value": "from-a", "time": 5}]},
+            {"id": "cell-b", "writer": 2, "writes": [{"key": "x", "value": "from-b", "time": 1}]}
+        ]}"#;
+        assert_eq!(post(port, "/reconcile", scenario).0, 200);
+        let (_, after) = get(port, "/stats");
+        let stats: serde_json::Value = serde_json::from_str(&after).unwrap();
+        assert_eq!(stats["sync"]["reconciles"], 1);
+        assert_eq!(stats["sync"]["conflictsResolved"], 1);
+        assert_eq!(stats["sync"]["lastConflict"]["key"], "x");
+        assert_eq!(stats["sync"]["lastConflict"]["winnerWriter"], 1);
+        assert_eq!(stats["sync"]["lastConflict"]["loserWriter"], 2);
+        assert!(stats["sync"]["lastReconcileAgeMs"].as_u64().is_some());
     }
 
     #[test]
