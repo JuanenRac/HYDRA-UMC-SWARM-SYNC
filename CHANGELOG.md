@@ -18,6 +18,13 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.1.1] - Sync evidence in /stats
+
+- `GET /stats` now includes a `sync` block: how many reconciliations completed, how many
+  conflicts they resolved, which key and which writer won the most recent conflict, and how
+  many milliseconds ago the last reconciliation finished (null before the first one). The
+  fields that were already there are unchanged. One new test.
+
 ## [0.1.0] - Real opt-in mutual authentication for /reconcile and /state
 
 - Before this, any caller on the same network as a node could `POST
