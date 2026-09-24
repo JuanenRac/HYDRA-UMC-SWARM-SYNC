@@ -305,7 +305,7 @@ mod tests {
         assert!(body.contains("from-a"));
     }
 
-    // H036: two writes for the SAME key at the identical (time, writer)
+    // two writes for the SAME key at the identical (time, writer)
     // stamp but DIFFERENT values, both inside the SAME cell's own
     // `writes` list - before the fix, build_cell_map() used plain `set`
     // and silently kept whichever write happened to be listed first,
@@ -333,7 +333,7 @@ mod tests {
         assert!(body.contains("second"));
     }
 
-    // H036's own acceptance criterion: PERMUTING those two entries must
+    // this project's own acceptance criterion: PERMUTING those two entries must
     // never produce a different, "conflict-free" result - both orderings
     // must be refused identically, since neither value is a principled
     // winner. Before the fix, this permutation would have silently kept
@@ -355,7 +355,7 @@ mod tests {
 
     // A true idempotent duplicate (identical stamp AND identical value,
     // e.g. a retried write landing twice in the same cell's own log) must
-    // still merge cleanly - H036's fix must not turn every same-stamp
+    // still merge cleanly - 's fix must not turn every same-stamp
     // repeat into a false-positive collision, only a genuinely competing
     // one with two different values.
     #[test]

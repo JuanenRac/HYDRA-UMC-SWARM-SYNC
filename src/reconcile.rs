@@ -42,14 +42,14 @@ pub struct Scenario {
 
 pub enum ReconcileError {
     NoCells,
-    /// SWARM-01: a real, "impossible" identity collision surfaced by
+    /// a real, "impossible" identity collision surfaced by
     /// `LwwMap::merge_report` - see that error type's own header comment.
     /// Refusing to produce a `ReconcileOutput` at all is the real
     /// "rechazo" (rejection) the situation calls for, rather than
     /// silently reporting a `converged` verdict
     /// that papers over an anomaly the merge itself couldn't resolve.
     ImpossibleConflict(IdentityCollision<String, String>),
-    /// SWARM-01: this node's own Lamport clock reached `u64::MAX` while
+    /// this node's own Lamport clock reached `u64::MAX` while
     /// reconciling - see `ClockOverflowError`'s own header comment for
     /// why this must surface as a real error rather than a silent wrap.
     ClockOverflow,
@@ -78,7 +78,7 @@ pub struct ReconcileOutput {
     pub next_local_time: u64,
 }
 
-/// H036: uses `set_checked` (not plain `set`) so two writes in this SAME
+/// uses `set_checked` (not plain `set`) so two writes in this SAME
 /// cell's own `writes` list, for the same key at the identical (time,
 /// writer) stamp but with DIFFERENT values, are refused as the real
 /// `IdentityCollision` they are - see `set_checked`'s own header comment
@@ -138,7 +138,7 @@ pub fn reconcile_with_prior(
     }
 
     let mut conflicts: Vec<MergeConflict<String, String>> = Vec::new();
-    // SWARM-01: try_fold (not fold) so a real IdentityCollision reported
+    // try_fold (not fold) so a real IdentityCollision reported
     // by merge_report stops reconciliation immediately - propagated via
     // `?` below as ReconcileError::ImpossibleConflict, rather than being
     // silently absorbed into a `converged` verdict that never explains

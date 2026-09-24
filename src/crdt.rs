@@ -13,7 +13,7 @@
 // a naive last-write-wins-by-wall-clock approach can't guarantee that
 // across a real network partition (clocks drift, arrive out of order).
 //
-// I19: real tombstone support. `remove()` marks a key as genuinely
+// real tombstone support. `remove` marks a key as genuinely
 // deleted (`Entry.value: None`) instead of physically dropping it from
 // `entries` - a plain removal would let a merge with a peer that never
 // saw the delete silently resurrect the key, since that peer's own
@@ -44,7 +44,7 @@ use std::hash::Hash;
 /// across independently-ticking nodes). Every node resolves the SAME
 /// conflict the SAME way without needing to talk to each other about it.
 ///
-/// I19: `generation` starts at 1 the first time a key is ever written
+/// `generation` starts at 1 the first time a key is ever written
 /// (set OR removed) and increments only on a real create/delete
 /// life-phase TRANSITION for that exact key (present -> tombstoned, or
 /// tombstoned/never-seen -> present) - an ordinary update to an
@@ -176,7 +176,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
         }
     }
 
-    /// I19: the real counterpart to `set` - marks `key` as genuinely
+    /// the real counterpart to `set` - marks `key` as genuinely
     /// deleted (a tombstone, see this module's own header comment)
     /// rather than merely absent, obeying the exact same conflict rule
     /// `set`/`merge` already do: a remove whose stamp would lose against
@@ -217,7 +217,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
         }
     }
 
-    /// SWARM-01/H036: identical to `set` in every case except one - a real
+    /// identical to `set` in every case except one - a real
     /// `IdentityCollision` this call would otherwise resolve by silent
     /// insertion order, exactly like `merge_report`'s own "same (time,
     /// writer) stamp, two different values" case already refuses to
@@ -322,7 +322,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
             .collect()
     }
 
-    /// I19: restores one entry EXACTLY as `entries_with_stamps` reported
+    /// restores one entry EXACTLY as `entries_with_stamps` reported
     /// it, `generation` included - used only by a real restart-time
     /// reload (store.rs's own `load`), never by an ordinary live write.
     /// Unlike `set`/`remove`, this trusts the caller's own `generation`
@@ -407,7 +407,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
     /// associated with one value); see the tests below for a direct
     /// check of all three properties, not just an example merge.
     ///
-    /// SWARM-01 (P2): if that invariant is ever actually violated - two entries
+    /// if that invariant is ever actually violated - two entries
     /// present with the IDENTICAL stamp but DIFFERENT values, which
     /// should never happen from a correctly-behaved single writer, but
     /// could from a corrupted message, a writer bug reusing a logical
@@ -452,9 +452,9 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
             match result.entries.get(key) {
                 Some(existing) if existing.stamp == other_entry.stamp => {
                     if existing.value != other_entry.value {
-                        // SWARM-01: same (generation, time, writer) stamp,
+                        // same (generation, time, writer) stamp,
                         // but two DIFFERENT values (a real value vs a
-                        // real value, or - I19 - a real value vs a
+                        // real value, or - - a real value vs a
                         // tombstone) - the "impossible" case this map's
                         // own single-writer invariant should have
                         // prevented. Refuse the whole reconciliation
@@ -498,7 +498,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
     }
 }
 
-/// SWARM-01: a real, explicit report of the one collision this map's
+/// a real, explicit report of the one collision this map's
 /// merge logic refuses to resolve on its own - see `merge_report`'s own
 /// header comment. Deliberately reports both full values (not just the
 /// shared stamp) so a caller/operator can actually judge which one, if
@@ -508,7 +508,7 @@ pub struct IdentityCollision<K, V> {
     pub key: K,
     pub time: LamportTime,
     pub writer: u64,
-    /// I19: `None` means the colliding side is a real tombstone (the
+    /// `None` means the colliding side is a real tombstone (the
     /// same writer claims to have both set AND deleted `key` at the
     /// identical logical instant) - just as real and reportable a
     /// collision as two different real values.
@@ -541,7 +541,7 @@ pub struct MergeConflict<K, V> {
     pub key: K,
     pub local_time: LamportTime,
     pub local_writer: u64,
-    /// I19: `None` means that side is a real tombstone (the key was
+    /// `None` means that side is a real tombstone (the key was
     /// genuinely deleted there), not a missing/unknown value.
     pub local_value: Option<V>,
     pub remote_time: LamportTime,
@@ -556,7 +556,7 @@ impl<K: Ord + Clone + Hash, V: Clone + PartialEq> LwwMap<K, V> {
     /// Two maps are equal if they agree on every key's current visible
     /// value - used by the property tests to check CRDT convergence
     /// (they don't need to compare internal stamps, just the observable
-    /// state). I19: compares every key EITHER map has ever touched
+    /// state). compares every key EITHER map has ever touched
     /// (present or tombstoned) via `get`, which already collapses "never
     /// touched" and "tombstoned" to the same `None` - the correct
     /// equivalence for an external observer, who cannot tell those two
@@ -748,7 +748,7 @@ mod tests {
 
     #[test]
     fn merge_report_rejects_an_identical_stamp_claiming_two_different_values() {
-        // SWARM-01's own exact reproduction: the same (time, writer)
+        // this project's own exact reproduction: the same (time, writer)
         // stamp - the identity a correctly-behaved single writer should
         // never reuse - shows up in both maps with DIFFERENT values.
         // There is no principled winner by stamp order (they're equal),
@@ -789,7 +789,7 @@ mod tests {
 
     #[test]
     fn set_checked_rejects_the_same_identity_collision_plain_set_would_silently_resolve() {
-        // H036: same (time, writer) stamp, different values - the exact
+        // same (time, writer) stamp, different values - the exact
         // ambiguity merge_report already refuses above, but reached here
         // through set_checked directly (build_cell_map's own call site),
         // not through a two-map merge. Plain `set` (see the sibling
@@ -1037,7 +1037,7 @@ mod tests {
     #[test]
     fn deleting_then_recreating_a_key_bumps_generation_and_beats_a_stale_peer_add_regardless_of_raw_time(
     ) {
-        // I19's own real motivation (see this module's header comment):
+        // this project's own real motivation (see this module's header comment):
         // a node deletes key x, then re-creates it - two real life-phase
         // transitions, so generation is now 3 (1: created, 2: deleted,
         // 3: re-created). A peer that never saw either transition still
