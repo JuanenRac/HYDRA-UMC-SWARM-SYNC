@@ -34,7 +34,7 @@ use crate::lamport::LamportTime;
 /// re-establishes the SAME conflict-resolution state a live map already
 /// converged to, not a fresh one.
 ///
-/// I19: `value` is `None` for a real tombstone (a key this node deleted
+/// `value` is `None` for a real tombstone (a key this node deleted
 /// via `LwwMap::remove`) - persisting only present entries would forget
 /// every real deletion on restart, reopening the exact resurrection
 /// `crdt.rs`'s own header comment describes the first time this node
@@ -69,7 +69,7 @@ pub fn load(path: &Path) -> io::Result<LwwMap<String, String>> {
     let state: PersistedState =
         serde_json::from_str(&raw).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     for entry in state.entries {
-        // I19: restore_entry, not set - this replays each entry's own
+        // restore_entry, not set - this replays each entry's own
         // exact prior stamp (tombstone included), never records a fresh
         // life-phase transition for it. See LwwMap::restore_entry's own
         // doc comment for why that distinction matters.
@@ -198,7 +198,7 @@ mod tests {
 
     #[test]
     fn a_real_deletion_survives_save_then_load_as_a_tombstone() {
-        // I19: before tombstones existed, save() only ever wrote PRESENT
+        // before tombstones existed, save only ever wrote PRESENT
         // entries, so a real remove() was indistinguishable on disk from
         // a key that had simply never existed - reload lost the
         // deletion outright.
@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn a_reloaded_tombstone_still_beats_a_stale_remote_add_after_restart() {
-        // I19's own real motivation: a node deletes a key, restarts (the
+        // this project's own real motivation: a node deletes a key, restarts (the
         // exact moment this module's own persistence matters), then
         // reconnects to a peer whose own copy is still the stale,
         // pre-delete value. Without generation surviving the restart

@@ -18,7 +18,7 @@
 )]
 pub struct LamportTime(pub u64);
 
-/// SWARM-01 (P2 - "the max counter neither panics nor resets causal
+/// (P2 - "the max counter neither panics nor resets causal
 /// order"): plain `+= 1` on this counter panics in a debug build and
 /// silently WRAPS TO ZERO in a release build once it reaches `u64::MAX` -
 /// a release-build wrap is the real danger: this clock would suddenly
