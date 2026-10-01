@@ -9,7 +9,7 @@
 ### 📡 Precision Time Protocol (PTP) & Multi-Node Synchronization
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Licencia-GPL%203.0-blue.svg" alt="GPL 3.0">
+  <img src="https://img.shields.io/badge/License-GPL%203.0-blue.svg" alt="GPL 3.0">
   <img src="https://img.shields.io/badge/Protocol-PTP%20%2F%20IEEE%201588-orange.svg" alt="PTP">
   <img src="https://img.shields.io/badge/Accuracy-<100ns-green.svg" alt="Accuracy">
 </p>
