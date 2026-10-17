@@ -33,7 +33,7 @@ $ hydra-umc-swarm-sync
 HYDRA-UMC-SWARM-SYNC v0.0.7
 CRDT swarm state reconciliation service: merges every HydraNode cell's view of swarm state into one convergent, order-independent result.
 Usage: hydra-umc-swarm-sync <scenario.json>
-       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH]
+       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--allow-anonymous]
 See scenarios/example.json for the expected format.
 ```
 
@@ -179,7 +179,14 @@ $ hydra-umc-swarm-sync serve --port 8112 --state-file /var/lib/hydra-umc/swarm-s
 ```
 
 `--addr` (default `127.0.0.1`) and `--port` (default `8112`) are both
-optional. **`--state-file PATH`** (or the `SWARM_SYNC_STATE_FILE` env
+optional. **Listening on the network needs a secret:** with an `--addr` that is
+not loopback, `serve` refuses to start (`[swarm-sync] fatal: ...`, exit `2`)
+unless `SWARM_SYNC_SHARED_SECRET` is set, because a node that merges what any
+machine on the network sends it lets that machine rewrite the swarm's view of
+itself; `--allow-anonymous` runs an open node on purpose, for a lab. A request
+body over 1 MiB is refused with `413` before it is read, and the state file is
+written to a temp file, forced to disk and renamed over the real one, so a
+power cut cannot leave a truncated state. **`--state-file PATH`** (or the `SWARM_SYNC_STATE_FILE` env
 var) is real, opt-in per-node persistence (`src/store.rs`) — this server
 used to be fully stateless, discarding every `/reconcile` result instead
 of remembering it. Unset, this node stays exactly the memory-only behavior it always

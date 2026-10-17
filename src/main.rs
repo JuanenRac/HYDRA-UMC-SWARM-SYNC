@@ -64,6 +64,14 @@ fn run_serve(args: &[String]) -> ExitCode {
         .ok()
         .filter(|s| !s.is_empty());
 
+    let allow_anonymous = args.iter().any(|a| a == "--allow-anonymous");
+    if let Some(problem) =
+        server::startup_problem(&bind_addr, shared_secret.as_deref(), allow_anonymous)
+    {
+        eprintln!("[swarm-sync] fatal: {problem}");
+        return ExitCode::from(2);
+    }
+
     match server::bind(&bind_addr) {
         Ok(bound) => {
             eprintln!("[swarm-sync] HTTP API listening on {bind_addr}");
@@ -101,7 +109,7 @@ fn main() -> ExitCode {
     let Some(scenario_path) = args.get(1) else {
         eprintln!("Usage: hydra-umc-swarm-sync <scenario.json>");
         eprintln!(
-            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH]"
+            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--allow-anonymous]"
         );
         eprintln!("See scenarios/example.json for the expected format.");
         return ExitCode::SUCCESS;

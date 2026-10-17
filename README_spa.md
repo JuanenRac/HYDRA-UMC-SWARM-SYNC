@@ -4,7 +4,7 @@
 
 # ⏱️ HYDRA-UMC-SWARM-SYNC
 
-<p align="center"><a href="README.md">🇺🇸 English</a> | 🇪🇸 <b>Español</b> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | <a href="README_zho.md">🇨🇳 简体中文</a> | <a href="README_jpn.md">🇯🇵 日本語</a></p>
+<p align="center"><a href="README.md">🇺🇸 English</a> | 🇪🇸 <b>Español</b> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | <a href="README_zho.md">🇨🇳 简体中文</a> | <a href="README_jpn.md">🇯🇵 日本語</a> | <a href="README_por.md">🇵🇹 Português</a></p>
 
 ### 📡 Protocolo de Tiempo de Precisión (PTP) y Sincronización Multi-Nodo
 
@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/Precisión-<100ns-green.svg" alt="Accuracy">
 </p>
 
-**Verificación de honestidad - qué funciona de verdad hoy:** el reloj lógico de Lamport (`src/lamport.rs`), el CRDT LWW-Element-Map con un merge demostrado conmutativo/asociativo/idempotente mediante property tests, no solo comprobado a ojo en un ejemplo (`src/crdt.rs`), la lógica de reconciliación compartida entre la CLI y el servidor (`src/reconcile.rs`), la persistencia real por nodo a prueba de caídas (`src/store.rs`, `--state-file`, verificada contra un binario realmente matado y relanzado), y el servidor JSON/HTTP que expone todo esto (`src/server.rs`, `tiny_http`, `POST /reconcile`, `GET /stats`) son reales y están probados (58 tests, `cargo test`), incluyendo una simulación de 4 celdas que demuestra convergencia a través de múltiples rondas de partición y reconexión parcial. Lo que NO es real: el timestamping por hardware PTP (IEEE 1588), la precisión sub-100ns que describen la propia insignia de este README y las viñetas "Sincronización Ultra-Precisa"/"Marcado de Tiempo por Hardware" - no hay ningún código PTP en todo este crate, y sigue diferido hasta que haya hardware real de NIC/temporizador para validarlo contra (ver ARQUITECTURA más abajo). Lo que existe y está probado hoy es el reloj lógico (Lamport) que el merge del CRDT realmente necesita, no una sincronización de reloj de hardware real. Ver `CHANGELOG.md` para lo que ya se ha entregado exactamente, y la HOJA DE RUTA más abajo para lo que sigue abierto.
+**Verificación de honestidad - qué funciona de verdad hoy:** el reloj lógico de Lamport (`src/lamport.rs`), el CRDT LWW-Element-Map con un merge demostrado conmutativo/asociativo/idempotente mediante property tests, no solo comprobado a ojo en un ejemplo (`src/crdt.rs`), la lógica de reconciliación compartida entre la CLI y el servidor (`src/reconcile.rs`), la persistencia real por nodo a prueba de caídas (`src/store.rs`, `--state-file`, verificada contra un binario realmente matado y relanzado), y el servidor JSON/HTTP que expone todo esto (`src/server.rs`, `tiny_http`, `POST /reconcile`, `GET /stats`) son reales y están probados (62 tests, `cargo test`), incluyendo una simulación de 4 celdas que demuestra convergencia a través de múltiples rondas de partición y reconexión parcial. Lo que NO es real: el timestamping por hardware PTP (IEEE 1588), la precisión sub-100ns que describen la propia insignia de este README y las viñetas "Sincronización Ultra-Precisa"/"Marcado de Tiempo por Hardware" - no hay ningún código PTP en todo este crate, y sigue diferido hasta que haya hardware real de NIC/temporizador para validarlo contra (ver ARQUITECTURA más abajo). Lo que existe y está probado hoy es el reloj lógico (Lamport) que el merge del CRDT realmente necesita, no una sincronización de reloj de hardware real. Ver `CHANGELOG.md` para lo que ya se ha entregado exactamente, y la HOJA DE RUTA más abajo para lo que sigue abierto.
 
 ---
 
@@ -32,6 +32,7 @@ Esta sincronización es crítica para el movimiento coordinado multi-robot, dond
 * 🔍 **Visibilidad Real de Conflictos y Prueba de Convergencia a Escala de Enjambre (v0):** `merge_report()` devuelve un registro real, por clave, de cada conflicto de escritura genuino resuelto durante la reconciliación - qué célula le ganó a cuál otra, y con qué timestamp. Un test simulado de 4 células demuestra que la convergencia se mantiene a través de múltiples rondas de partición y reconexión parcial, no solo un único merge entre dos células.
 * 💾 **Persistencia Real por Nodo (`--state-file`):** El propio estado CRDT del modo `serve` ahora sobrevive a un reinicio real del proceso (`src/store.rs`) - cada `POST /reconcile` se fusiona con el estado de este nodo y lo actualiza de forma duradera en vez de partir de cero en cada llamada - verificado contra un proceso real terminado y relanzado, no solo pruebas internas. Sin configurar, se mantiene el comportamiento original solo en memoria. Ver `docs/CLI_REFERENCE.md`.
 * 🔐 **Autenticación Mutua Real Opcional (`SWARM_SYNC_SHARED_SECRET`):** sin configurar, este proyecto mantiene su postura original de confianza en la LAN - cualquier llamador puede hacer `POST /reconcile` o `GET /state`. Configurada (solo por variable de entorno, nunca por flag de CLI - un secreto compartido pertenece al entorno/unidad systemd, no a un listado de procesos), ambas rutas requieren un `Authorization: Bearer <token>` que coincida, comprobado en tiempo constante. `GET /stats` sigue abierta en ambos casos.
+* 🧱 **Se niega a ser un nodo abierto en la red, y cuerpos acotados (v0):** `serve` en una dirección que no sea loopback necesita `SWARM_SYNC_SHARED_SECRET` (o un `--allow-anonymous` explícito para laboratorio), porque un nodo que fusiona lo que le envíe cualquier equipo de la red deja que ese equipo reescriba la visión que el enjambre tiene de sí mismo; los cuerpos de petición de más de 1 MiB se rechazan con `413` antes de leerlos; y el fichero de estado se fuerza a disco antes de reemplazar al anterior, de modo que un corte de corriente no pueda dejar un estado truncado o vacío. *(implementado)*
 
 ---
 
@@ -161,7 +162,7 @@ cargo test   # el reloj de Lamport, y el CRDT en si - incluyendo
              # propio de deteccion de conflictos de merge_report(), y una
              # simulacion de 4 celulas que demuestra convergencia a
              # traves de multiples rondas de particion y reconexion
-             # parcial - 51 tests en total
+             # parcial - 62 tests en total
 ```
 
 La misma llamada a `reconcile()` también es alcanzable a través de una

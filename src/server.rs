@@ -21,6 +21,7 @@
 //! disk after each call - `POST /reconcile` twice in a row now actually
 //! accumulates, and a restart resumes from where this node left off.
 
+use std::io::Read;
 use std::path::PathBuf;
 
 use serde_json::json;
@@ -29,6 +30,50 @@ use tiny_http::{Header, Method, Response, Server};
 use crate::crdt::LwwMap;
 use crate::reconcile::{reconcile_with_prior, Scenario};
 use crate::store;
+
+/// A reconcile scenario is the state of a few cells; a megabyte is far more
+/// than a fleet needs and far less than a body that exhausts the memory of a
+/// small board. Anything larger is refused with 413 before it is read.
+pub const MAX_BODY_BYTES: u64 = 1024 * 1024;
+
+/// True for the addresses that cannot be reached from another machine. Takes
+/// a bare host (`127.0.0.1`, `::1`, `localhost`) or a host with a port
+/// (`127.0.0.1:8112`, `[::1]:8112`, `localhost:8112`).
+pub fn is_loopback_addr(addr: &str) -> bool {
+    if let Ok(socket) = addr.parse::<std::net::SocketAddr>() {
+        return socket.ip().is_loopback();
+    }
+    let host = match addr.rsplit_once(':') {
+        Some((host, port)) if !host.contains(':') && port.chars().all(|c| c.is_ascii_digit()) => {
+            host
+        }
+        _ => addr,
+    };
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    host.trim_matches(|c| c == '[' || c == ']')
+        .parse::<std::net::IpAddr>()
+        .map(|ip| ip.is_loopback())
+        .unwrap_or(false)
+}
+
+/// Why this process must not start: a node that accepts other nodes' state
+/// from the network without checking who sends it lets anyone on that
+/// network rewrite the swarm's view of itself.
+pub fn startup_problem(
+    addr: &str,
+    shared_secret: Option<&str>,
+    allow_anonymous: bool,
+) -> Option<String> {
+    let has_secret = shared_secret.is_some_and(|s| !s.is_empty());
+    if is_loopback_addr(addr) || has_secret || allow_anonymous {
+        return None;
+    }
+    Some(format!(
+        "refusing to listen on {addr} without SWARM_SYNC_SHARED_SECRET: set it, bind --addr 127.0.0.1, or pass --allow-anonymous to run an open node on purpose"
+    ))
+}
 
 fn json_header() -> Header {
     Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap()
@@ -184,13 +229,24 @@ pub fn run(server: Server, state_path: Option<PathBuf>, shared_secret: Option<St
         }
 
         let mut raw = String::new();
-        if let Err(e) = request.as_reader().read_to_string(&mut raw) {
-            write_json(
-                request,
-                400,
-                &json!({"error": format!("could not read request body: {e}")}),
-            );
-            continue;
+        match Read::take(request.as_reader(), MAX_BODY_BYTES + 1).read_to_string(&mut raw) {
+            Ok(_) if raw.len() as u64 > MAX_BODY_BYTES => {
+                write_json(
+                    request,
+                    413,
+                    &json!({"error": format!("request body is larger than {MAX_BODY_BYTES} bytes")}),
+                );
+                continue;
+            }
+            Ok(_) => {}
+            Err(e) => {
+                write_json(
+                    request,
+                    400,
+                    &json!({"error": format!("could not read request body: {e}")}),
+                );
+                continue;
+            }
         }
 
         let scenario: Scenario = match serde_json::from_str(&raw) {
@@ -657,5 +713,54 @@ mod tests {
         assert!(!constant_time_eq(b"abc", b"abcd"));
         assert!(!constant_time_eq(b"", b"a"));
         assert!(constant_time_eq(b"", b""));
+    }
+
+    #[test]
+    fn loopback_addresses_are_recognised_and_nothing_else_is() {
+        for addr in [
+            "127.0.0.1",
+            "localhost",
+            "::1",
+            "[::1]",
+            "127.0.0.1:8112",
+            "localhost:8112",
+            "[::1]:8112",
+        ] {
+            assert!(is_loopback_addr(addr), "{addr} is loopback");
+        }
+        for addr in [
+            "0.0.0.0",
+            "192.168.0.180",
+            "::",
+            "example.com",
+            "",
+            "0.0.0.0:8112",
+            "[::]:8112",
+            "example.com:8112",
+        ] {
+            assert!(!is_loopback_addr(addr), "{addr} is not loopback");
+        }
+    }
+
+    #[test]
+    fn a_network_address_needs_the_shared_secret_or_an_explicit_opt_out() {
+        assert!(startup_problem("127.0.0.1:8112", None, false).is_none());
+        assert!(startup_problem("0.0.0.0:8112", None, false).is_some());
+        assert!(startup_problem("0.0.0.0:8112", Some(""), false).is_some());
+        assert!(startup_problem("0.0.0.0:8112", Some("s3cret"), false).is_none());
+        assert!(startup_problem("0.0.0.0:8112", None, true).is_none());
+    }
+
+    #[test]
+    fn a_body_over_the_limit_is_413_and_the_node_keeps_serving() {
+        let port = start_test_server();
+        let big = format!(
+            "{{\"cells\":[],\"pad\":\"{}\"}}",
+            "x".repeat(MAX_BODY_BYTES as usize)
+        );
+        let (status, body) = post(port, "/reconcile", &big);
+        assert_eq!(status, 413, "{body}");
+        let (status, _) = get(port, "/stats");
+        assert_eq!(status, 200);
     }
 }

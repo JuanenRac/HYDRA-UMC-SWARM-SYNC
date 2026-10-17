@@ -18,6 +18,13 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.1.2] - Refuses to be an open node on the network; bounded bodies; durable state
+
+- **Network address needs the secret:** `serve` on an `--addr` that is not loopback refuses to start (`fatal`, exit 2) unless `SWARM_SYNC_SHARED_SECRET` is set; `--allow-anonymous` runs an open node on purpose for a lab. A node that merges what any machine sends it let that machine rewrite the swarm view of itself. The loopback check accepts a host with or without a port.
+- **Bounded request bodies:** a `POST /reconcile` body over 1 MiB is refused with `413` before it is read; it used to be read into memory without a limit.
+- **Durable state file:** the state is written to a temp file, forced to disk and renamed over the real file (and the directory synced), so a power cut cannot leave a truncated or empty state.
+- Three new tests (62 in all): the loopback check in both forms, the start-up refusal rules, and the 413.
+
 ## [0.1.1] - Sync evidence in /stats
 
 - `GET /stats` now includes a `sync` block: how many reconciliations completed, how many

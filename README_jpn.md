@@ -4,7 +4,7 @@
 
 # ⏱️ HYDRA-UMC-SWARM-SYNC
 
-<p align="center"><a href="README.md">🇺🇸 English</a> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | <a href="README_zho.md">🇨🇳 简体中文</a> | 🇯🇵 <b>日本語</b></p>
+<p align="center"><a href="README.md">🇺🇸 English</a> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | <a href="README_zho.md">🇨🇳 简体中文</a> | 🇯🇵 <b>日本語</b> | <a href="README_por.md">🇵🇹 Português</a></p>
 
 ### 📡 精密時刻プロトコル（PTP）とマルチノード同期
 
@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/Accuracy-<100ns-green.svg" alt="Accuracy">
 </p>
 
-**正直な現状確認 - 今日実際に動くもの:** Lamport論理クロック（`src/lamport.rs`）、プロパティテストにより可換性・結合性・冪等性が証明されたLWW-Element-Map CRDTのマージ（1つの例で目視確認しただけではない、`src/crdt.rs`）、CLIとサーバーで共有されるリコンサイル処理（`src/reconcile.rs`）、実際にkillして再起動したバイナリで検証済みの本物のクラッシュセーフなノードごとの永続化（`src/store.rs`、`--state-file`）、そしてそれら全てを公開するJSON/HTTPサーバー（`src/server.rs`、`tiny_http`、`POST /reconcile`、`GET /stats`）は本物でテスト済みです（58件のテスト、`cargo test`）。複数ラウンドのパーティション分割と部分的な再接続にわたる収束を証明する4セルシミュレーションも含まれます。本物でないもの：PTP（IEEE 1588）ハードウェアタイムスタンプ、このREADME自身のバッジや「超精密同期」「ハードウェアタイムスタンプ」の項目が説明するサブ100nsの精度 - このクレートにはPTPコードがどこにもなく、実際のNIC/ハードウェアタイマーが存在してそれに対して検証できるようになるまで先送りされています（下記のARCHITECTUREを参照）。今日存在しテストされているのは、CRDTマージが実際に必要とする論理（Lamport）クロックであり、実時間ハードウェア同期ではありません。これまでに何が実際に出荷されたかは`CHANGELOG.md`を、残っている作業は下記のROADMAPを参照してください。
+**正直な現状確認 - 今日実際に動くもの:** Lamport論理クロック（`src/lamport.rs`）、プロパティテストにより可換性・結合性・冪等性が証明されたLWW-Element-Map CRDTのマージ（1つの例で目視確認しただけではない、`src/crdt.rs`）、CLIとサーバーで共有されるリコンサイル処理（`src/reconcile.rs`）、実際にkillして再起動したバイナリで検証済みの本物のクラッシュセーフなノードごとの永続化（`src/store.rs`、`--state-file`）、そしてそれら全てを公開するJSON/HTTPサーバー（`src/server.rs`、`tiny_http`、`POST /reconcile`、`GET /stats`）は本物でテスト済みです（62件のテスト、`cargo test`）。複数ラウンドのパーティション分割と部分的な再接続にわたる収束を証明する4セルシミュレーションも含まれます。本物でないもの：PTP（IEEE 1588）ハードウェアタイムスタンプ、このREADME自身のバッジや「超精密同期」「ハードウェアタイムスタンプ」の項目が説明するサブ100nsの精度 - このクレートにはPTPコードがどこにもなく、実際のNIC/ハードウェアタイマーが存在してそれに対して検証できるようになるまで先送りされています（下記のARCHITECTUREを参照）。今日存在しテストされているのは、CRDTマージが実際に必要とする論理（Lamport）クロックであり、実時間ハードウェア同期ではありません。これまでに何が実際に出荷されたかは`CHANGELOG.md`を、残っている作業は下記のROADMAPを参照してください。
 
 ---
 
@@ -37,6 +37,7 @@
 * 🔍 **実際の競合可視化とスウォーム規模での収束の証明（v0）：** `merge_report()` は、調整中に解決された実際の書き込み競合それぞれについて、どのセルがどの別のセルに勝ったか、どのタイムスタンプでかを示す、キーごとの実際の記録を返します。4 セルのシミュレーションテストは、単一の 2 セル間マージだけでなく、複数回のパーティション化と部分的な再接続を通じて収束が保たれることを証明します。
 * 💾 **実際のノードごとの永続化（`--state-file`）：** `serve` モード自身の CRDT 状態は、実際のプロセス再起動を経ても生き残るようになりました（`src/store.rs`）- 各 `POST /reconcile` は毎回まっさらな状態から始めるのではなく、このノード自身の状態にマージされ、永続的に更新されます - インプロセステストだけでなく、実際に終了・再起動させたバイナリに対して検証済みです。未設定の場合は、元のメモリのみの動作のままです。詳細は `docs/CLI_REFERENCE.md` を参照。
 * 🔐 **実際のオプトイン相互認証（`SWARM_SYNC_SHARED_SECRET`）：** 未設定の場合、このプロジェクトは元のLAN信頼姿勢を維持します - どの呼び出し元でも `POST /reconcile` や `GET /state` を実行できます。設定した場合（環境変数のみ、CLIフラグは使いません - 共有シークレットはプロセス一覧ではなく環境変数/systemdユニットに属するべきです）、両方のルートで一致する `Authorization: Bearer <token>` が必要になり、定数時間で比較されます。`GET /stats` はどちらの場合も開いたままです。
+* 🧱 **ネットワーク上のオープンなノードになることを拒否し、ボディにも上限があります（v0）：** ループバック以外のアドレスでの `serve` には `SWARM_SYNC_SHARED_SECRET`（ラボ用途なら明示的な `--allow-anonymous`）が必要です。ネットワーク上のどのマシンから送られても統合してしまうノードは、そのマシンにスウォームの自己認識を書き換えさせてしまうからです。1 MiB を超えるリクエストボディは読み込む前に `413` で拒否され、状態ファイルは前のファイルを置き換える前にディスクへ強制書き込みされるため、停電で切り詰められた状態や空の状態が残ることはありません。*（実装済み）*
 
 ---
 
@@ -165,7 +166,7 @@ cargo test   # Lamport クロックと CRDT 自体 - merge が可換・結合的
              # タイブレークのテスト、merge_report() 自体の競合検出の
              # 振る舞い、そして複数回のパーティション化と部分的な
              # 再接続を経ても収束することを証明する 4 セルのシミュレー
-             # ション - 合計 51 個のテスト
+             # ション - 合計 62 個のテスト
 ```
 
 同じ `reconcile()` 呼び出しは、ローカルのシナリオファイルの代わりに

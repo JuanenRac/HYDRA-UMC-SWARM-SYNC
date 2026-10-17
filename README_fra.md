@@ -4,7 +4,7 @@
 
 # ⏱️ HYDRA-UMC-SWARM-SYNC
 
-<p align="center"><a href="README.md">🇺🇸 English</a> | <a href="README_spa.md">🇪🇸 Español</a> | 🇫🇷 <b>Français</b> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | <a href="README_zho.md">🇨🇳 简体中文</a> | <a href="README_jpn.md">🇯🇵 日本語</a></p>
+<p align="center"><a href="README.md">🇺🇸 English</a> | <a href="README_spa.md">🇪🇸 Español</a> | 🇫🇷 <b>Français</b> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | <a href="README_zho.md">🇨🇳 简体中文</a> | <a href="README_jpn.md">🇯🇵 日本語</a> | <a href="README_por.md">🇵🇹 Português</a></p>
 
 ### 📡 Precision Time Protocol (PTP) & Synchronisation multi-nœuds
 
@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/Précision-<100ns-green.svg" alt="Accuracy">
 </p>
 
-**Vérification d'honnêteté - ce qui fonctionne réellement aujourd'hui :** l'horloge logique de Lamport (`src/lamport.rs`), le CRDT LWW-Element-Map dont le merge est prouvé commutatif/associatif/idempotent par des property tests, pas seulement vérifié à l'œil sur un exemple (`src/crdt.rs`), la logique de réconciliation partagée entre la CLI et le serveur (`src/reconcile.rs`), la persistance réelle par nœud à l'épreuve des pannes (`src/store.rs`, `--state-file`, vérifiée contre un binaire réellement tué puis relancé), et le serveur JSON/HTTP exposant tout cela (`src/server.rs`, `tiny_http`, `POST /reconcile`, `GET /stats`) sont réels et testés (58 tests, `cargo test`), y compris une simulation à 4 cellules prouvant la convergence à travers plusieurs cycles de partition et de reconnexion partielle. Ce qui n'est PAS réel : l'horodatage matériel PTP (IEEE 1588), la précision sub-100 ns que décrivent le badge de ce README et les puces « Synchronisation ultra-précise »/« Horodatage matériel » - il n'y a aucun code PTP nulle part dans ce crate, et cela reste différé jusqu'à ce qu'un vrai matériel NIC/minuterie existe pour le valider (voir ARCHITECTURE ci-dessous). Ce qui existe et est testé aujourd'hui, c'est l'horloge logique (Lamport) dont le merge du CRDT a réellement besoin, pas une synchronisation d'horloge matérielle réelle. Voir `CHANGELOG.md` pour ce qui a déjà été livré exactement, et la FEUILLE DE ROUTE ci-dessous pour ce qui reste ouvert.
+**Vérification d'honnêteté - ce qui fonctionne réellement aujourd'hui :** l'horloge logique de Lamport (`src/lamport.rs`), le CRDT LWW-Element-Map dont le merge est prouvé commutatif/associatif/idempotent par des property tests, pas seulement vérifié à l'œil sur un exemple (`src/crdt.rs`), la logique de réconciliation partagée entre la CLI et le serveur (`src/reconcile.rs`), la persistance réelle par nœud à l'épreuve des pannes (`src/store.rs`, `--state-file`, vérifiée contre un binaire réellement tué puis relancé), et le serveur JSON/HTTP exposant tout cela (`src/server.rs`, `tiny_http`, `POST /reconcile`, `GET /stats`) sont réels et testés (62 tests, `cargo test`), y compris une simulation à 4 cellules prouvant la convergence à travers plusieurs cycles de partition et de reconnexion partielle. Ce qui n'est PAS réel : l'horodatage matériel PTP (IEEE 1588), la précision sub-100 ns que décrivent le badge de ce README et les puces « Synchronisation ultra-précise »/« Horodatage matériel » - il n'y a aucun code PTP nulle part dans ce crate, et cela reste différé jusqu'à ce qu'un vrai matériel NIC/minuterie existe pour le valider (voir ARCHITECTURE ci-dessous). Ce qui existe et est testé aujourd'hui, c'est l'horloge logique (Lamport) dont le merge du CRDT a réellement besoin, pas une synchronisation d'horloge matérielle réelle. Voir `CHANGELOG.md` pour ce qui a déjà été livré exactement, et la FEUILLE DE ROUTE ci-dessous pour ce qui reste ouvert.
 
 ---
 
@@ -32,6 +32,7 @@ Cette synchronisation est critique pour le mouvement coordonné multi-robots, o�
 * 🔍 **Visibilité réelle des conflits & preuve de convergence à l'échelle de l'essaim (v0) :** `merge_report()` renvoie un enregistrement réel, par clé, de chaque conflit d'écriture réel résolu pendant la réconciliation - quelle cellule a battu quelle autre, et avec quel horodatage. Un test simulé à 4 cellules prouve que la convergence tient sur plusieurs cycles de partition et de reconnexion partielle, pas seulement une fusion unique entre deux cellules.
 * 💾 **Persistance réelle par nœud (`--state-file`) :** L'état CRDT propre du mode `serve` survit désormais à un vrai redémarrage du processus (`src/store.rs`) - chaque `POST /reconcile` fusionne dans l'état de ce nœud et le met à jour durablement au lieu de repartir de zéro à chaque appel - vérifié contre un vrai processus tué puis relancé, pas seulement des tests internes. Non configuré, le comportement original en mémoire seule est conservé. Voir `docs/CLI_REFERENCE.md`.
 * 🔐 **Authentification mutuelle réelle, optionnelle (`SWARM_SYNC_SHARED_SECRET`) :** non configurée, ce projet garde sa posture originale de confiance LAN - n'importe quel appelant peut faire `POST /reconcile` ou `GET /state`. Configurée (variable d'environnement uniquement, jamais un flag CLI - un secret partagé appartient à l'environnement/l'unité systemd, pas à une liste de processus), les deux routes exigent un `Authorization: Bearer <token>` correspondant, vérifié en temps constant. `GET /stats` reste ouvert dans les deux cas.
+* 🧱 **Refuse d'être un nœud ouvert sur le réseau, et corps de requête bornés (v0) :** `serve` sur une adresse autre que loopback exige `SWARM_SYNC_SHARED_SECRET` (ou un `--allow-anonymous` explicite pour un laboratoire), car un nœud qui fusionne tout ce que lui envoie n'importe quelle machine du réseau laisse cette machine réécrire la vision que l'essaim a de lui-même ; les corps de requête de plus de 1 Mio sont refusés avec `413` avant d'être lus ; et le fichier d'état est forcé sur le disque avant de remplacer le précédent, de sorte qu'une coupure de courant ne puisse pas laisser un état tronqué ou vide. *(implémenté)*
 
 ---
 
@@ -162,7 +163,7 @@ cargo test   # l'horloge de Lamport, et le CRDT lui-meme - avec des
              # propre de detection de conflits de merge_report(), et une
              # simulation a 4 cellules prouvant la convergence sur
              # plusieurs cycles de partition et reconnexion partielle -
-             # 51 tests au total
+             # 62 tests au total
 ```
 
 Le même appel à `reconcile()` est aussi accessible via une véritable API

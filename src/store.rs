@@ -113,8 +113,22 @@ pub fn save(path: &Path, map: &LwwMap<String, String>) -> io::Result<()> {
         path.extension().and_then(|e| e.to_str()).unwrap_or("json"),
         std::process::id()
     ));
-    fs::write(&tmp_path, json)?;
-    fs::rename(&tmp_path, path)
+    // forced to disk before the rename: a rename alone survives a crash of
+    // this process but not a power cut, which can leave a renamed file
+    // whose contents never left the page cache
+    {
+        use std::io::Write;
+        let mut file = fs::File::create(&tmp_path)?;
+        file.write_all(json.as_bytes())?;
+        file.sync_all()?;
+    }
+    fs::rename(&tmp_path, path)?;
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        if let Ok(handle) = fs::File::open(dir) {
+            let _ = handle.sync_all();
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
