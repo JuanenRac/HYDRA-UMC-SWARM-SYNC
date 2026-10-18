@@ -18,6 +18,11 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.1.4]
+
+- Maturity is functional: nothing here has been verified on real hardware yet.
+- The READMEs say, in the eight languages, what is planned and what has only been tested against fakes, emulators or fixtures, and carry a short safety and security status note.
+
 ## [0.1.3] - A write cannot capture a key for good, and a node that cannot start says so
 
 - **A write too far ahead is refused (`422`).** The Lamport `time` and the `writer` of a write are whatever the caller sends. A write with a time near `u64::MAX` won every conflict for ever and, because the clock refuses to pass it, could never be overwritten or followed by an honest write: the key stayed captured until somebody edited the state file by hand. Each request may now move a time at most `--max-time-jump` (default 1000000) past the newest time already in the state, so whatever one request writes the next can correct. A client that stamps writes with wall-clock milliseconds must raise the flag.

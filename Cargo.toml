@@ -1,6 +1,6 @@
 [package]
 name = "hydra-umc-swarm-sync"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 description = "CRDT state reconciliation (last-writer-wins map with a Lamport logical clock) for the HYDRA-UMC swarm."
 license = "GPL-3.0-only"

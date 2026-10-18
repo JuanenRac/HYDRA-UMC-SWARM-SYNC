@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "ecosystem": "HYDRA-UMC",
   "name": "HYDRA-UMC-SWARM-SYNC",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "role": "service",
   "stack": "rust",
   "technologies": [
@@ -12,7 +12,7 @@
     "JSON/HTTP"
   ],
   "deployment_target": "cm5",
-  "maturity": "established",
+  "maturity": "functional",
   "family": "Orchestration & Swarm",
   "parent": "HYDRA-UMC-ORCHESTRATOR",
   "build": "cargo build --release.",
