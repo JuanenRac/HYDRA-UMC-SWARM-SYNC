@@ -17,6 +17,17 @@
 
 ---
 
+## 📋 En un coup d'œil
+
+| | |
+|---|---|
+| Version | `0.1.3` |
+| Maturité | Établi |
+| Tests | 70 (`cargo test`) |
+| Technologie | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
+| Cible | Le Raspberry Pi CM5 d'une cellule HYDRA-UMC |
+| Sur matériel réel | Pas encore : aucune exécution sur du matériel réel n'est consignée pour cette version |
+
 ## 1. 🛠️ APERÇU TECHNIQUE
 
 **HYDRA-UMC-SWARM-SYNC** est la couche de réconciliation d'état de l'usine distribuée : un CRDT (une carte où la dernière écriture gagne, ordonnée par une horloge logique de Lamport) qui permet à chaque contrôleur de fusionner sa vue de l'essaim sans arbitre central. Une horloge globale synchronisée avec précision (PTP / IEEE 1588) est l'objectif à long terme et n'est pas implémentée : voir la feuille de route.

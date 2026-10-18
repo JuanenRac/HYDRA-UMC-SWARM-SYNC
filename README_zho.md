@@ -17,6 +17,17 @@
 
 ---
 
+## 📋 速览
+
+| | |
+|---|---|
+| 版本 | `0.1.3` |
+| 成熟度 | 成熟 |
+| 测试 | 70 (`cargo test`) |
+| 技术栈 | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
+| 目标 | HYDRA-UMC 工作单元的 Raspberry Pi CM5 |
+| 真实硬件 | 尚未：此版本没有在真实硬件上运行的记录 |
+
 ## 1. 🛠️ 技术概述
 
 **HYDRA-UMC-SWARM-SYNC** 是分布式工厂的状态协调层：一个由 Lamport 逻辑时钟排序的 CRDT（后写入者获胜的映射），使每个控制器无需中央仲裁者即可合并自己对集群的视图。精确同步的全局时钟（PTP / IEEE 1588）是长期目标，目前尚未实现：请见路线图。
