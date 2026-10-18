@@ -296,3 +296,60 @@ mod tests {
         fs::remove_dir_all(&dir).ok();
     }
 }
+
+#[cfg(test)]
+mod edge_tests {
+    use super::*;
+
+    fn temp_file(name: &str, content: &str) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "swarm-sync-edge-{}-{name}.json",
+            std::process::id()
+        ));
+        fs::write(&path, content).unwrap();
+        path
+    }
+
+    #[test]
+    fn a_corrupt_state_file_is_refused_and_left_untouched() {
+        for (name, content) in [
+            ("garbage", "{{{"),
+            ("blank", ""),
+            ("wrong-type", "{\"entries\": 5}"),
+            ("bad-time", "{\"entries\":[{\"key\":\"k\",\"value\":\"v\",\"time\":-1,\"writer\":1,\"generation\":0}]}"),
+        ] {
+            let path = temp_file(name, content);
+            let err = load(&path).map(|_| ()).expect_err("a corrupt state must not load");
+            assert_eq!(err.kind(), io::ErrorKind::InvalidData, "{name}");
+            assert_eq!(fs::read_to_string(&path).unwrap(), content);
+            fs::remove_file(&path).ok();
+        }
+    }
+
+    #[test]
+    fn an_empty_map_saves_and_loads_as_an_empty_map() {
+        let path = std::env::temp_dir().join(format!(
+            "swarm-sync-edge-{}-emptymap.json",
+            std::process::id()
+        ));
+        save(&path, &LwwMap::new()).unwrap();
+        assert!(load(&path).unwrap().is_empty());
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn saving_twice_keeps_only_the_latest_content() {
+        let path =
+            std::env::temp_dir().join(format!("swarm-sync-edge-{}-twice.json", std::process::id()));
+        let mut first = LwwMap::new();
+        first.set("a".to_string(), "1".to_string(), LamportTime(1), 1);
+        save(&path, &first).unwrap();
+        let mut second = LwwMap::new();
+        second.set("b".to_string(), "2".to_string(), LamportTime(2), 1);
+        save(&path, &second).unwrap();
+        let loaded = load(&path).unwrap();
+        assert_eq!(loaded.get(&"b".to_string()).map(String::as_str), Some("2"));
+        assert!(loaded.get(&"a".to_string()).is_none());
+        fs::remove_file(&path).ok();
+    }
+}

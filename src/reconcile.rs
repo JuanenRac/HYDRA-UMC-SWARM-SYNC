@@ -215,3 +215,155 @@ pub fn reconcile_with_prior(
     };
     Ok((output, merged_forward))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cell(id: &str, writer: u64, writes: &[(&str, &str, u64)]) -> Cell {
+        Cell {
+            id: id.to_string(),
+            writer,
+            writes: writes
+                .iter()
+                .map(|(k, v, t)| Write {
+                    key: k.to_string(),
+                    value: v.to_string(),
+                    time: *t,
+                })
+                .collect(),
+        }
+    }
+
+    fn scenario(cells: Vec<Cell>) -> Scenario {
+        Scenario { cells }
+    }
+
+    #[test]
+    fn check_stamps_allows_exactly_the_limit_and_refuses_one_past_it() {
+        let at_limit = scenario(vec![cell("a", 1, &[("k", "v", 100 + 50)])]);
+        assert!(check_stamps(&at_limit, Some(LamportTime(100)), 50).is_ok());
+        let past = scenario(vec![cell("a", 1, &[("k", "v", 100 + 51)])]);
+        match check_stamps(&past, Some(LamportTime(100)), 50) {
+            Err(ReconcileError::StampTooFarAhead { key, time, limit }) => {
+                assert_eq!((key.as_str(), time, limit), ("k", 151, 150));
+            }
+            _ => panic!("a stamp past the limit must be refused"),
+        }
+    }
+
+    #[test]
+    fn check_stamps_measures_from_zero_when_nothing_is_known_yet() {
+        let s = scenario(vec![cell("a", 1, &[("k", "v", DEFAULT_MAX_TIME_JUMP + 1)])]);
+        assert!(check_stamps(&s, None, DEFAULT_MAX_TIME_JUMP).is_err());
+        let ok = scenario(vec![cell("a", 1, &[("k", "v", DEFAULT_MAX_TIME_JUMP)])]);
+        assert!(check_stamps(&ok, None, DEFAULT_MAX_TIME_JUMP).is_ok());
+    }
+
+    #[test]
+    fn check_stamps_inspects_every_cell_not_only_the_first() {
+        let s = scenario(vec![
+            cell("a", 1, &[("k", "v", 1)]),
+            cell("b", 2, &[("far", "v", 9_999_999_999)]),
+        ]);
+        match check_stamps(&s, Some(LamportTime(0)), 10) {
+            Err(ReconcileError::StampTooFarAhead { key, .. }) => assert_eq!(key, "far"),
+            _ => panic!("the second cell's runaway stamp must be found"),
+        }
+    }
+
+    #[test]
+    fn check_stamps_does_not_overflow_when_the_known_time_is_near_u64_max() {
+        let s = scenario(vec![cell("a", 1, &[("k", "v", u64::MAX)])]);
+        assert!(check_stamps(&s, Some(LamportTime(u64::MAX - 1)), u64::MAX).is_ok());
+    }
+
+    #[test]
+    fn reconcile_without_cells_is_refused() {
+        match reconcile(&scenario(vec![])) {
+            Err(ReconcileError::NoCells) => {}
+            _ => panic!("an empty scenario has nothing to reconcile"),
+        }
+    }
+
+    #[test]
+    fn the_later_stamp_wins_and_the_loser_is_reported_once() {
+        let s = scenario(vec![
+            cell("a", 1, &[("k", "old", 5)]),
+            cell("b", 2, &[("k", "new", 9)]),
+        ]);
+        let out = reconcile(&s).ok().unwrap();
+        assert_eq!(out.merged_state.get("k").map(String::as_str), Some("new"));
+        assert_eq!(out.conflicts_resolved, 1);
+        assert_eq!(out.conflicts.len(), 1);
+        assert_eq!(out.cells_merged, 2);
+        assert_eq!(
+            out.next_local_time, 11,
+            "the clock observes the latest stamp (9 -> 10) and then ticks once"
+        );
+    }
+
+    #[test]
+    fn the_same_stamp_from_two_writers_is_broken_by_the_larger_writer_id_in_either_order() {
+        let ab = scenario(vec![
+            cell("a", 1, &[("k", "from-1", 7)]),
+            cell("b", 2, &[("k", "from-2", 7)]),
+        ]);
+        let ba = scenario(vec![
+            cell("b", 2, &[("k", "from-2", 7)]),
+            cell("a", 1, &[("k", "from-1", 7)]),
+        ]);
+        let one = reconcile(&ab).ok().unwrap();
+        let two = reconcile(&ba).ok().unwrap();
+        assert_eq!(one.merged_state, two.merged_state);
+        assert_eq!(
+            one.merged_state.get("k").map(String::as_str),
+            Some("from-2")
+        );
+    }
+
+    #[test]
+    fn a_prior_state_is_merged_in_and_a_stale_write_does_not_beat_it() {
+        let first = scenario(vec![cell("a", 1, &[("k", "fresh", 20)])]);
+        let (_, state) = reconcile_with_prior(&first, LwwMap::new()).ok().unwrap();
+        let stale = scenario(vec![cell("b", 2, &[("k", "stale", 3), ("other", "x", 4)])]);
+        let (out, state) = reconcile_with_prior(&stale, state).ok().unwrap();
+        assert_eq!(out.merged_state.get("k").map(String::as_str), Some("fresh"));
+        assert_eq!(out.merged_state.get("other").map(String::as_str), Some("x"));
+        assert_eq!(state.len(), 2);
+        assert!(out.next_local_time > 20);
+    }
+
+    #[test]
+    fn the_same_stamp_with_two_values_inside_one_cell_is_an_impossible_conflict() {
+        let s = scenario(vec![cell("a", 1, &[("k", "one", 4), ("k", "two", 4)])]);
+        match reconcile(&s) {
+            Err(ReconcileError::ImpossibleConflict(_)) => {}
+            _ => panic!("one writer cannot claim two values for the same stamp"),
+        }
+    }
+
+    #[test]
+    fn a_state_at_the_top_of_the_clock_range_is_refused_instead_of_wrapping() {
+        let s = scenario(vec![cell("a", 1, &[("k", "v", u64::MAX)])]);
+        match reconcile(&s) {
+            Err(ReconcileError::ClockOverflow) => {}
+            _ => panic!("the local clock must not wrap past u64::MAX"),
+        }
+    }
+
+    #[test]
+    fn every_error_has_a_readable_message() {
+        assert!(ReconcileError::NoCells.to_string().contains("no cells"));
+        assert!(ReconcileError::ClockOverflow
+            .to_string()
+            .contains("u64::MAX"));
+        let far = ReconcileError::StampTooFarAhead {
+            key: "k".into(),
+            time: 9,
+            limit: 3,
+        };
+        let text = far.to_string();
+        assert!(text.contains("\"k\"") && text.contains('9') && text.contains('3'));
+    }
+}
