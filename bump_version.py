@@ -30,6 +30,7 @@ import sys
 from pathlib import Path
 
 CARGO_TOML = Path(__file__).resolve().parent / "Cargo.toml"
+CARGO_LOCK = Path(__file__).resolve().parent / "Cargo.lock"
 VERSION_RE = re.compile(r'^version\s*=\s*"([^"]+)"\s*$', re.MULTILINE)
 
 
@@ -44,6 +45,21 @@ def bump(version: str) -> str:
         parts[i - 1] += 1
         i -= 1
     return ".".join(str(p) for p in parts)
+
+
+def sync_lock(new_version: str) -> None:
+    """Keeps this package's own entry in Cargo.lock at the new version, so a
+    locked build does not fail and the build does not leave a dirty tree."""
+    if not CARGO_LOCK.is_file():
+        return
+    package = re.search(r'^name\s*=\s*"([^"]+)"', CARGO_TOML.read_text(encoding="utf-8"), re.MULTILINE)
+    if not package:
+        return
+    text = CARGO_LOCK.read_text(encoding="utf-8")
+    pattern = re.compile(r'(name = "' + re.escape(package.group(1)) + r'"\r?\nversion = )"[^"]+"')
+    new_text = pattern.sub(lambda m: m.group(1) + f'"{new_version}"', text, count=1)
+    if new_text != text:
+        CARGO_LOCK.write_text(new_text, encoding="utf-8", newline="")
 
 
 def main() -> int:
@@ -61,6 +77,7 @@ def main() -> int:
     new_version = bump(old_version)
     new_text = text[: match.start()] + f'version = "{new_version}"' + text[match.end() :]
     CARGO_TOML.write_text(new_text, encoding="utf-8")
+    sync_lock(new_version)
 
     print(f"Version bumped: {old_version} -> {new_version}")
     return 0

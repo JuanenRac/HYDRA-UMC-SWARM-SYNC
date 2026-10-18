@@ -6,26 +6,22 @@
 
 <p align="center"><a href="README.md">🇺🇸 English</a> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | 🇨🇳 <b>简体中文</b> | <a href="README_jpn.md">🇯🇵 日本語</a> | <a href="README_por.md">🇵🇹 Português</a></p>
 
-### 📡 精密时间协议（PTP）与多节点同步
+### 📡 CRDT 状态协调与多节点同步
 
 <p align="center">
   <img src="https://img.shields.io/badge/Licencia-GPL%203.0-blue.svg" alt="GPL 3.0">
-  <img src="https://img.shields.io/badge/Protocol-PTP%20%2F%20IEEE%201588-orange.svg" alt="PTP">
-  <img src="https://img.shields.io/badge/Accuracy-<100ns-green.svg" alt="Accuracy">
+  <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="CRDT">
 </p>
 
-**诚实核查 - 今天真正能运行的部分：** Lamport 逻辑时钟(`src/lamport.rs`)、经属性测试证明满足交换律/结合律/幂等性(而不仅仅是用一个例子肉眼验证)的 LWW-Element-Map CRDT 合并(`src/crdt.rs`)、CLI 与服务端共享的协调逻辑(`src/reconcile.rs`)、真实的、经过真正杀死并重启二进制文件验证的崩溃安全的按节点持久化(`src/store.rs`、`--state-file`)，以及公开这一切的 JSON/HTTP 服务器(`src/server.rs`、`tiny_http`、`POST /reconcile`、`GET /stats`)都是真实的并经过测试(62 个测试，`cargo test`)，包括一个 4 单元模拟测试，证明了在多轮分区和部分重连中收敛性依然成立。尚不真实的部分：PTP(IEEE 1588)硬件时间戳，即本 README 自身的徽章和"超精密同步"/"硬件时间戳"条目所描述的亚 100ns 精度——本 crate 中没有任何 PTP 代码，这部分将推迟到有真实的网卡/硬件定时器可供验证为止(见下方 ARCHITECTURE)。今天真实存在并经过测试的，是 CRDT 合并实际需要的逻辑(Lamport)时钟，而不是真正的硬件时钟同步。具体已交付的内容请见 `CHANGELOG.md`，尚待完成的部分请见下方 ROADMAP。
+**诚实核查 - 今天真正能运行的部分：** Lamport 逻辑时钟(`src/lamport.rs`)、经属性测试证明满足交换律/结合律/幂等性(而不仅仅是用一个例子肉眼验证)的 LWW-Element-Map CRDT 合并(`src/crdt.rs`)、CLI 与服务端共享的协调逻辑(`src/reconcile.rs`)、真实的、经过真正杀死并重启二进制文件验证的崩溃安全的按节点持久化(`src/store.rs`、`--state-file`)，以及公开这一切的 JSON/HTTP 服务器(`src/server.rs`、`tiny_http`、`POST /reconcile`、`GET /stats`)都是真实的并经过测试(70 个测试，`cargo test`)，包括一个 4 单元模拟测试，证明了在多轮分区和部分重连中收敛性依然成立。尚不真实的部分：PTP(IEEE 1588)硬件时间戳，即本 README 自身的徽章和"超精密同步"/"硬件时间戳"条目所描述的亚 100ns 精度——本 crate 中没有任何 PTP 代码，这部分将推迟到有真实的网卡/硬件定时器可供验证为止(见下方 ARCHITECTURE)。今天真实存在并经过测试的，是 CRDT 合并实际需要的逻辑(Lamport)时钟，而不是真正的硬件时钟同步。具体已交付的内容请见 `CHANGELOG.md`，尚待完成的部分请见下方 ROADMAP。
 
 ---
 
 ## 1. 🛠️ 技术概述
 
-**HYDRA-UMC-SWARM-SYNC** 是分布式工厂的心跳。它实现了 PTP（精密时间协议
-/ IEEE 1588）的专用版本，以确保网络中的每个控制器都共享一个完全同步的
-全局时钟。
+**HYDRA-UMC-SWARM-SYNC** 是分布式工厂的状态协调层：一个由 Lamport 逻辑时钟排序的 CRDT（后写入者获胜的映射），使每个控制器无需中央仲裁者即可合并自己对集群的视图。精确同步的全局时钟（PTP / IEEE 1588）是长期目标，目前尚未实现：请见路线图。
 
-这种同步对于多机器人协同运动至关重要，多条机械臂必须在完全相同的微秒
-时刻开始和结束轨迹，以避免碰撞或执行联合装配任务。
+让多台机械臂在同一微秒启动和结束轨迹，或进行联合装配，需要这个时钟，属于未来的工作。
 
 ### 关键特性：
 * ⏱️ **逻辑时钟，尚非硬件 PTP 同步：** `src/lamport.rs` 实现了一个真实的、经过测试的 Lamport 逻辑时钟——这正是下方 CRDT 合并实际需要的排序原语。亚 100ns 抖动和 PTP(IEEE 1588)硬件时间戳是最终目标(见下方 ARCHITECTURE)，但不是本 crate 今天测量或实现的东西——本仓库中没有任何网卡/硬件定时器代码，`src/lamport.rs` 自身的文件头注释也明确说明了这一点。
@@ -34,7 +30,7 @@
 * 🛡️ **抗重连的 CRDT 合并(今天真实可用)：** 一个真实的 4 单元模拟测试(`cargo test`)证明了收敛性在多轮分区和部分重连中依然成立——这是对某个单元离线后又重新加入的韧性，而不是本 crate 未曾测量的、针对真实网络数据包抖动/延迟的韧性。
 * 🔍 **真实的冲突可见性与集群规模的收敛证明（v0）：** `merge_report()` 会返回一份真实的、按键分类的记录，列出协调过程中解决的每一个真实写入冲突——哪个单元战胜了哪个单元，用的是什么时间戳。一个 4 单元的模拟测试证明了收敛性在多轮分区和部分重连中依然成立，而不仅仅是两个单元之间的一次性合并。
 * 💾 **真实的按节点持久化(`--state-file`):** `serve` 模式自身的 CRDT 状态现在能在真实的进程重启后存活(`src/store.rs`)——每次 `POST /reconcile` 都会合并进该节点自身的状态并持久化更新,而不是每次调用都从零开始——已针对真实的、被终止后重新启动的进程完成验证,而不仅仅是进程内测试。未配置时,保持原有的纯内存行为。详见 `docs/CLI_REFERENCE.md`。
-* 🔐 **真实的可选双向认证(`SWARM_SYNC_SHARED_SECRET`):** 未配置时,本项目保持原有的局域网信任姿态——任何调用方都可以执行 `POST /reconcile` 或 `GET /state`。配置后(仅通过环境变量,绝不通过命令行参数——共享密钥应属于环境变量/systemd 单元,而非进程列表),两个路由都要求携带匹配的 `Authorization: Bearer <token>`,并以恒定时间比较。`GET /stats` 在两种情况下都保持开放。
+* 🔐 **真实的可选共享密钥认证(`SWARM_SYNC_SHARED_SECRET`):** 未配置时,本项目保持原有的局域网信任姿态——任何调用方都可以执行 `POST /reconcile` 或 `GET /state`。配置后(仅通过环境变量,绝不通过命令行参数——共享密钥应属于环境变量/systemd 单元,而非进程列表),两个路由都要求携带匹配的 `Authorization: Bearer <token>`,并以恒定时间比较。`GET /stats` 在两种情况下都保持开放。
 * 🧱 **拒绝成为网络上的开放节点，且请求体有上限（v0）：** 在非回环地址上运行 `serve` 需要 `SWARM_SYNC_SHARED_SECRET`（实验室环境可显式使用 `--allow-anonymous`），因为一个会合并网络上任意机器所发送内容的节点，会让该机器改写蜂群对自身的认知；超过 1 MiB 的请求体会在读取之前就被以 `413` 拒绝；状态文件在替换旧文件之前会被强制写入磁盘，因此断电不会留下被截断或为空的状态。*（已实现）*
 
 ---
@@ -43,13 +39,15 @@
 
 ```mermaid
 flowchart TD
-    GM["Grandmaster Clock (Orchestrator Node)"] --> S1["HydraNode 1 (Slave)"]
-    GM --> S2["HydraNode 2 (Slave)"]
-    GM --> S3["HydraNode 3 (Slave)"]
-    S1 --> H745_1["STM32H745 Local Clock"]
-    S2 --> H745_2["STM32H745 Local Clock"]
-    S3 --> H745_3["STM32H745 Local Clock"]
+    GM["Grandmaster Clock (Orchestrator Node)"] -.-> S1["HydraNode 1 (Slave)"]
+    GM -.-> S2["HydraNode 2 (Slave)"]
+    GM -.-> S3["HydraNode 3 (Slave)"]
+    S1 -.-> H745_1["STM32H745 Local Clock"]
+    S2 -.-> H745_2["STM32H745 Local Clock"]
+    S3 -.-> H745_3["STM32H745 Local Clock"]
 ```
+
+> 虚线箭头仅为计划，尚未实现：本仓库中没有 PTP 代码。
 
 ---
 
@@ -58,7 +56,7 @@ flowchart TD
 * **为何采用基于 CRDT 的同步，而非单一真实来源。** 多个 HYDRA-UMC 单元可以半自主运行并在之后重新连接——CRDT 合并策略无需中央仲裁者决定"谁的状态获胜"即可收敛，这是朴素的"最后写入者获胜"方法在真实网络分区场景下无法保证的。
 * **为何这是 HYDRA-UMC-ORCHESTRATOR 的兄弟项目，而非子模块。** 状态协调是一项持续的后台关注点，独立于任何单一的编排决策——将其保持为独立进程意味着编排器的重启不会中断正在进行中的合并。
 * **为何 CRDT 合并今天已经真实存在，而 PTP 硬件同步尚未实现。** `src/crdt.rs` 实现了一个真实的 LWW-Element-Map（最后写入者获胜映射）——一种基于状态的 CRDT，其 `merge` 可证明是可交换、可结合且幂等的（不仅仅是在某个例子上“看起来收敛”，见该模块自身的属性测试）。`src/lamport.rs` 用一个真实的 Lamport 逻辑时钟为其提供支撑。PTP（IEEE 1588，亚 100ns 硬件时间戳）是一个根本不同、依赖硬件的问题——它需要真实的网卡/硬件计时器才有意义，在有真实硬件可供验证之前将继续推迟。逻辑时钟才是 CRDT 合并真正需要用来确定性地解决冲突的东西，而这部分今天已经是真实且经过测试的。
-* **这如何融入生态系统的其余部分。** 作为 HYDRA-UMC-ORCHESTRATOR 下的同级服务，与 HYDRA-UMC-PATH-PLANNER-3D、HYDRA-UMC-JOB-DISPATCHER 和 HYDRA-UMC-NODE-HEALING 并列——无论当前由哪个单元持有编排器角色，都能保持每个单元自身对集群状态的视图一致。
+* **这如何融入生态系统的其余部分。** 作为 HYDRA-UMC-ORCHESTRATOR 下的同级服务，与 HYDRA-UMC-PATH-PLANNER-3D、HYDRA-UMC-JOB-DISPATCHER 和 HYDRA-UMC-NODE-HEALING 并列——无论当前由哪个单元持有编排器角色，都能保持每个单元自身对集群状态的视图一致。（目前还没有任何组件调用它，该集成仍在计划中。）
 * **为何 `merge_report()` 是一个新方法，而不是修改 `merge()` 的返回值。** `merge()` 依然保持纯粹、廉价、明显正确的黑盒特性——正是这种简单性使它易于被信任。`merge_report()` 在其之上为调用方（一个运维人员、一个调试工具）叠加了真实的冲突可见性，供其明确想知道一次协调究竟覆盖了什么，而不必强迫热路径 `merge()` 的每一个调用方都为这份记账买单或去处理它。
 * **为何冲突报告展示的是时间戳顺序，而不是因果上的“先于发生”。** Lamport 时钟保证真正的因果先于关系意味着更早的时间戳——但反过来并不成立：更早的时间戳并不能证明两个事件是因果相关的，而不仅仅是并发的。`MergeConflict` 刻意保持诚实，只报告 Lamport 时钟真正能够证明的东西（一个一致的全序关系），而不是需要向量时钟才能做出的因果性断言。
 
@@ -123,12 +121,7 @@ run.bat scenarios/example.json
 阅读）、一个 `writer`（写入者 ID），以及一组 `writes`
 （`{key, value, time}`，其中 `time` 是显式的 Lamport 时间戳，是回放
 而非实时生成的——与 HYDRA-UMC-PATH-PLANNER-3D 的 `seed` 使用的
-"显式、确定性输入"模式相同）。每个单元的写入会被折叠进它自己的
-映射中，然后每个单元的映射会被合并两次——一次从左到右（通过
-`merge_report()`，因此沿途每一个真实冲突都会被记录），一次从右到左
-（通过普通的 `merge()`）——只有当两种顺序都产生完全相同的最终状态时，
-结果才会打印 `converged: true`，这才是这个服务真正依赖的 CRDT 属性，
-而不仅仅是一个假设。
+"显式、确定性输入"模式相同）。每个单元的写入先折叠进它自己的映射，然后用 `merge_report()` 从左到右合并所有单元的映射，因此过程中出现的每个真实冲突都会记录在结果中。无论按什么顺序合并都得到相同状态，这是 CRDT 本身的性质，由 `src/crdt.rs` 中的属性测试固定，不会在每次调用时重新检查。
 
 对照 `scenarios/example.json`（其中 `cell-a` 和 `cell-b` 都写入了
 `cell-a-node-2`）运行时，可以看到真实的冲突解决过程，而不只是最终的
@@ -140,7 +133,6 @@ run.bat scenarios/example.json
 ```json
 {
   "cells_merged": 2,
-  "converged": true,
   "merged_state": { "...": "..." },
   "conflicts_resolved": 1,
   "conflicts": [
@@ -159,7 +151,7 @@ cargo test   # Lamport 时钟，以及 CRDT 本身——包括直接验证 merge
              # 例子上"看起来正确"）、一个针对真正并发写入的确定性
              # 平局判定测试、merge_report() 自身的冲突检测行为，以及
              # 一个证明多轮分区和部分重连后依然收敛的 4 单元模拟——
-             # 共 62 个测试
+             # 共 70 个测试
 ```
 
 同一个 `reconcile()` 调用也可以通过真实的 JSON/HTTP API

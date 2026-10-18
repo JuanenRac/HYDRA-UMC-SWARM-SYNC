@@ -18,6 +18,16 @@ semantic-versioning judgment calls:
 
 ---
 
+## [0.1.3] - A write cannot capture a key for good, and a node that cannot start says so
+
+- **A write too far ahead is refused (`422`).** The Lamport `time` and the `writer` of a write are whatever the caller sends. A write with a time near `u64::MAX` won every conflict for ever and, because the clock refuses to pass it, could never be overwritten or followed by an honest write: the key stayed captured until somebody edited the state file by hand. Each request may now move a time at most `--max-time-jump` (default 1000000) past the newest time already in the state, so whatever one request writes the next can correct. A client that stamps writes with wall-clock milliseconds must raise the flag.
+- **A state file that cannot be read stops the start with status 2.** The state is read before the port is bound. Before, the process printed that it was listening, then logged the failure and exited with status 0, so systemd did not restart it and compose restarted it in a loop with no error signal.
+- **Four workers serve requests,** and a body that announces more than 1 MiB is refused before it is read: a slow upload holds one worker, not the node.
+- **Errors say what went wrong:** `409` when the node's own clock cannot advance, `422` for a refused write, `400` for a collision inside the request.
+- **The merge no longer runs twice per request,** and the `converged` field is gone from the response and the CLI output: both orders computed the maximum per key of the same entries, so it was always `true` and the failure branch could never run. That merging in any order gives the same state is pinned by the property tests of the CRDT.
+- `GET /health` answers without a token. The state file's directory is created when missing (before, every reconcile answered 500 after doing the work). `bump_version.py` keeps `Cargo.lock` at the new version, so a locked build no longer fails.
+- Documentation: the package description, the README (the PTP clock and the sub-100 ns badge were presented as what the service does; they are the roadmap), the diagram, the manifest technologies and `docs/CLI_REFERENCE.md` (versions, paths, error text) now say what exists; the optional secret is described as a shared secret, not mutual authentication. 70 tests.
+
 ## [0.1.2] - Refuses to be an open node on the network; bounded bodies; durable state
 
 - **Network address needs the secret:** `serve` on an `--addr` that is not loopback refuses to start (`fatal`, exit 2) unless `SWARM_SYNC_SHARED_SECRET` is set; `--allow-anonymous` runs an open node on purpose for a lab. A node that merges what any machine sends it let that machine rewrite the swarm view of itself. The loopback check accepts a host with or without a port.

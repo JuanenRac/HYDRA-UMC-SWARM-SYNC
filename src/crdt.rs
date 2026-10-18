@@ -420,6 +420,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
     /// detected and rejected, not silently papered over, uses
     /// `merge_report` instead, which is what this project's own real
     /// reconciliation path (`reconcile_with_prior`) always uses.
+    #[cfg_attr(not(test), allow(dead_code))] // the plain merge the property tests pin; the service uses merge_report
     pub fn merge(&self, other: &Self) -> Self {
         let mut result = self.clone();
         for (key, other_entry) in other.entries.iter() {

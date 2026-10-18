@@ -1,8 +1,8 @@
 [package]
 name = "hydra-umc-swarm-sync"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
-description = "Precision Time Protocol (PTP / IEEE 1588) implementation for multi-node clock synchronization across the HYDRA-UMC swarm."
+description = "CRDT state reconciliation (last-writer-wins map with a Lamport logical clock) for the HYDRA-UMC swarm."
 license = "GPL-3.0-only"
 authors = ["JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>"]
 repository = "https://github.com/JuanenRac/HYDRA-UMC-SWARM-SYNC"

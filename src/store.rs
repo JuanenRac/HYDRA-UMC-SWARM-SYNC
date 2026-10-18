@@ -108,6 +108,9 @@ pub fn save(path: &Path, map: &LwwMap<String, String>) -> io::Result<()> {
     };
     let json = serde_json::to_string_pretty(&state).map_err(io::Error::other)?;
 
+    if let Some(parent) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        fs::create_dir_all(parent)?;
+    }
     let tmp_path = path.with_extension(format!(
         "{}.{}.tmp",
         path.extension().and_then(|e| e.to_str()).unwrap_or("json"),

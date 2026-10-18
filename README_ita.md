@@ -6,23 +6,22 @@
 
 <p align="center"><a href="README.md">🇺🇸 English</a> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | 🇮🇹 <b>Italiano</b> | <a href="README_deu.md">🇩🇪 Deutsch</a> | <a href="README_zho.md">🇨🇳 简体中文</a> | <a href="README_jpn.md">🇯🇵 日本語</a> | <a href="README_por.md">🇵🇹 Português</a></p>
 
-### 📡 Precision Time Protocol (PTP) & Sincronizzazione Multi-Nodo
+### 📡 Riconciliazione dello stato con CRDT e sincronizzazione multi-nodo
 
 <p align="center">
   <img src="https://img.shields.io/badge/Licenza-GPL%203.0-blue.svg" alt="GPL 3.0">
-  <img src="https://img.shields.io/badge/Protocollo-PTP%20%2F%20IEEE%201588-orange.svg" alt="PTP">
-  <img src="https://img.shields.io/badge/Precisione-<100ns-green.svg" alt="Accuracy">
+  <img src="https://img.shields.io/badge/Protocollo-CRDT%20%2F%20Lamport-orange.svg" alt="CRDT">
 </p>
 
-**Verifica di onestà - cosa funziona davvero oggi:** l'orologio logico di Lamport (`src/lamport.rs`), il CRDT LWW-Element-Map il cui merge è dimostrato commutativo/associativo/idempotente da property test, non solo verificato a occhio su un esempio (`src/crdt.rs`), la logica di riconciliazione condivisa tra la CLI e il server (`src/reconcile.rs`), la persistenza reale per nodo a prova di crash (`src/store.rs`, `--state-file`, verificata contro un binario realmente terminato e riavviato), e il server JSON/HTTP che espone tutto questo (`src/server.rs`, `tiny_http`, `POST /reconcile`, `GET /stats`) sono reali e testati (62 test, `cargo test`), inclusa una simulazione a 4 celle che dimostra la convergenza attraverso più round di partizione e riconnessione parziale. Ciò che NON è reale: il timestamping hardware PTP (IEEE 1588), la precisione sub-100 ns che descrivono il badge di questo README e i punti "Sincronizzazione ultra-precisa"/"Timestamp hardware" - non c'è alcun codice PTP in nessuna parte di questo crate, e resta rimandato finché non ci sarà vero hardware NIC/timer per validarlo (vedi ARCHITETTURA più sotto). Ciò che esiste ed è testato oggi è l'orologio logico (Lamport) di cui il merge del CRDT ha davvero bisogno, non una sincronizzazione di orologio hardware reale. Vedi `CHANGELOG.md` per ciò che è stato consegnato finora esattamente, e la TABELLA DI MARCIA più sotto per ciò che resta aperto.
+**Verifica di onestà - cosa funziona davvero oggi:** l'orologio logico di Lamport (`src/lamport.rs`), il CRDT LWW-Element-Map il cui merge è dimostrato commutativo/associativo/idempotente da property test, non solo verificato a occhio su un esempio (`src/crdt.rs`), la logica di riconciliazione condivisa tra la CLI e il server (`src/reconcile.rs`), la persistenza reale per nodo a prova di crash (`src/store.rs`, `--state-file`, verificata contro un binario realmente terminato e riavviato), e il server JSON/HTTP che espone tutto questo (`src/server.rs`, `tiny_http`, `POST /reconcile`, `GET /stats`) sono reali e testati (70 test, `cargo test`), inclusa una simulazione a 4 celle che dimostra la convergenza attraverso più round di partizione e riconnessione parziale. Ciò che NON è reale: il timestamping hardware PTP (IEEE 1588), la precisione sub-100 ns che descrivono il badge di questo README e i punti "Sincronizzazione ultra-precisa"/"Timestamp hardware" - non c'è alcun codice PTP in nessuna parte di questo crate, e resta rimandato finché non ci sarà vero hardware NIC/timer per validarlo (vedi ARCHITETTURA più sotto). Ciò che esiste ed è testato oggi è l'orologio logico (Lamport) di cui il merge del CRDT ha davvero bisogno, non una sincronizzazione di orologio hardware reale. Vedi `CHANGELOG.md` per ciò che è stato consegnato finora esattamente, e la TABELLA DI MARCIA più sotto per ciò che resta aperto.
 
 ---
 
 ## 1. 🛠️ PANORAMICA TECNICA
 
-**HYDRA-UMC-SWARM-SYNC** è il battito cardiaco della fabbrica distribuita. Implementa una versione specializzata di PTP (Precision Time Protocol / IEEE 1588) per garantire che ogni controller nella rete condivida un orologio globale perfettamente sincronizzato.
+**HYDRA-UMC-SWARM-SYNC** è il livello di riconciliazione dello stato della fabbrica distribuita: un CRDT (una mappa dove vince l'ultima scrittura, ordinata da un orologio logico di Lamport) che permette a ogni controller di fondere la propria vista dello sciame senza un arbitro centrale. Un orologio globale sincronizzato con precisione (PTP / IEEE 1588) è l'obiettivo a lungo termine e non è implementato: vedi la roadmap.
 
-Questa sincronizzazione è fondamentale per il movimento coordinato multi-robot, in cui più bracci devono iniziare e terminare le traiettorie nello stesso microsecondo esatto per evitare collisioni o per eseguire compiti di assemblaggio congiunti.
+Avviare e terminare le traiettorie di più bracci nello stesso microsecondo, o eseguire un assemblaggio congiunto, richiede quell'orologio ed è lavoro futuro.
 
 ### Caratteristiche principali:
 * ⏱️ **Orologio logico, non ancora sincronizzazione PTP hardware:** `src/lamport.rs` implementa un vero orologio logico di Lamport, testato - la primitiva di ordinamento di cui il merge del CRDT sotto ha davvero bisogno. Il jitter sub-100 ns e il timestamping hardware PTP (IEEE 1588) sono l'obiettivo finale (vedi ARCHITETTURA più sotto), non qualcosa che questo crate misura o implementa oggi - non c'è alcun codice NIC/timer hardware da nessuna parte in questo repository, e il commento di intestazione di `src/lamport.rs` lo dichiara esplicitamente.
@@ -31,7 +30,7 @@ Questa sincronizzazione è fondamentale per il movimento coordinato multi-robot,
 * 🛡️ **Merge CRDT resiliente alla riconnessione (reale oggi):** un vero test di simulazione a 4 celle (`cargo test`) dimostra che la convergenza regge attraverso più round di partizione e riconnessione parziale - questa è resilienza a una cella che va offline e si ricollega più tardi, non una resilienza misurata al jitter/ritardo reale dei pacchetti di rete, che questo crate non strumenta.
 * 🔍 **Visibilità Reale dei Conflitti e Prova di Convergenza su Scala Sciame (v0):** `merge_report()` restituisce un registro reale, per chiave, di ogni conflitto di scrittura genuino risolto durante la riconciliazione - quale cella ha battuto quale altra, e con quale timestamp. Un test simulato a 4 celle dimostra che la convergenza regge attraverso più cicli di partizione e riconnessione parziale, non solo un singolo merge tra due celle.
 * 💾 **Persistenza Reale per Nodo (`--state-file`):** Lo stato CRDT proprio della modalità `serve` ora sopravvive a un vero riavvio del processo (`src/store.rs`) - ogni `POST /reconcile` si fonde nello stato di questo nodo e lo aggiorna in modo duraturo invece di ripartire da zero a ogni chiamata - verificato contro un vero processo terminato e rilanciato, non solo test interni. Se non configurato, resta il comportamento originale solo in memoria. Vedi `docs/CLI_REFERENCE.md`.
-* 🔐 **Autenticazione Reciproca Reale Opzionale (`SWARM_SYNC_SHARED_SECRET`):** non configurata, questo progetto mantiene la sua postura originale di fiducia LAN - qualsiasi chiamante può fare `POST /reconcile` o `GET /state`. Configurata (solo variabile d'ambiente, mai un flag CLI - un segreto condiviso appartiene all'ambiente/unità systemd, non a un elenco di processi), entrambe le rotte richiedono un `Authorization: Bearer <token>` corrispondente, verificato in tempo costante. `GET /stats` resta aperta in entrambi i casi.
+* 🔐 **Autenticazione con Segreto Condiviso Reale Opzionale (`SWARM_SYNC_SHARED_SECRET`):** non configurata, questo progetto mantiene la sua postura originale di fiducia LAN - qualsiasi chiamante può fare `POST /reconcile` o `GET /state`. Configurata (solo variabile d'ambiente, mai un flag CLI - un segreto condiviso appartiene all'ambiente/unità systemd, non a un elenco di processi), entrambe le rotte richiedono un `Authorization: Bearer <token>` corrispondente, verificato in tempo costante. `GET /stats` resta aperta in entrambi i casi.
 * 🧱 **Rifiuta di essere un nodo aperto sulla rete, e corpi delimitati (v0):** `serve` su un indirizzo diverso da loopback richiede `SWARM_SYNC_SHARED_SECRET` (o un `--allow-anonymous` esplicito per il laboratorio), perché un nodo che unisce tutto ciò che gli invia qualsiasi macchina della rete permette a quella macchina di riscrivere la visione che lo sciame ha di sé; i corpi di richiesta oltre 1 MiB vengono rifiutati con `413` prima di essere letti; e il file di stato viene forzato su disco prima di sostituire il precedente, così un'interruzione di corrente non può lasciare uno stato troncato o vuoto. *(implementato)*
 
 ---
@@ -40,13 +39,15 @@ Questa sincronizzazione è fondamentale per il movimento coordinato multi-robot,
 
 ```mermaid
 flowchart TD
-    GM["Grandmaster Clock (Nodo Orchestratore)"] --> S1["HydraNode 1 (Slave)"]
-    GM --> S2["HydraNode 2 (Slave)"]
-    GM --> S3["HydraNode 3 (Slave)"]
-    S1 --> H745_1["STM32H745 Local Clock"]
-    S2 --> H745_2["STM32H745 Local Clock"]
-    S3 --> H745_3["STM32H745 Local Clock"]
+    GM["Grandmaster Clock (Nodo Orchestratore)"] -.-> S1["HydraNode 1 (Slave)"]
+    GM -.-> S2["HydraNode 2 (Slave)"]
+    GM -.-> S3["HydraNode 3 (Slave)"]
+    S1 -.-> H745_1["STM32H745 Local Clock"]
+    S2 -.-> H745_2["STM32H745 Local Clock"]
+    S3 -.-> H745_3["STM32H745 Local Clock"]
 ```
+
+> Le frecce tratteggiate sono pianificate, non implementate: questo repository non contiene codice PTP.
 
 ---
 
@@ -55,7 +56,7 @@ flowchart TD
 * **Perché sincronizzazione basata su CRDT, non un'unica fonte di verità.** Più celle HYDRA-UMC possono operare in modo semi-autonomo e riconnettersi più tardi - una strategia di fusione CRDT converge senza un arbitro centrale che decida quale stato 'vince', cosa che un approccio ingenuo dell'ultima scrittura vincente non può garantire di fronte a una vera partizione di rete.
 * **Perché è sorella, non un sottomodulo, di HYDRA-UMC-ORCHESTRATOR.** La riconciliazione dello stato è una preoccupazione continua di sfondo, indipendente da qualsiasi decisione di orchestrazione puntuale - tenerla come processo separato significa che un riavvio dell'orchestratore non interrompe una fusione in corso.
 * **Perché la fusione CRDT è già reale oggi ma la sincronizzazione hardware PTP no.** `src/crdt.rs` implementa un vero LWW-Element-Map (mappa a ultima scrittura vincente), un CRDT basato su stato il cui `merge` è dimostrabilmente commutativo, associativo e idempotente - non solo "sembra convergere" su un esempio, vedi i test di proprietà di quello stesso modulo. `src/lamport.rs` lo sostiene con un vero orologio logico di Lamport. Il PTP (IEEE 1588, marcatura temporale hardware sub-100ns) è un problema fondamentalmente diverso e dipendente dall'hardware - ha bisogno di NIC/timer hardware reali per avere senso, e resta rimandato finché non ci sarà hardware reale contro cui validarlo. Un orologio logico è ciò di cui la fusione CRDT ha realmente bisogno per risolvere i conflitti in modo deterministico, e quella parte è reale e testata oggi.
-* **Come si inserisce nel resto dell'ecosistema.** Un servizio fratello sotto HYDRA-UMC-ORCHESTRATOR, insieme a HYDRA-UMC-PATH-PLANNER-3D, HYDRA-UMC-JOB-DISPATCHER e HYDRA-UMC-NODE-HEALING - mantiene coerente la visione che ogni cella ha dello stato dello sciame, indipendentemente da quale detenga il ruolo di orchestratore in un dato momento.
+* **Come si inserisce nel resto dell'ecosistema.** Un servizio fratello sotto HYDRA-UMC-ORCHESTRATOR, insieme a HYDRA-UMC-PATH-PLANNER-3D, HYDRA-UMC-JOB-DISPATCHER e HYDRA-UMC-NODE-HEALING - mantiene coerente la visione che ogni cella ha dello stato dello sciame, indipendentemente da quale detenga il ruolo di orchestratore in un dato momento. (Per ora nulla lo chiama: l'integrazione è pianificata.)
 * **Perché `merge_report()` è un nuovo metodo invece di cambiare cosa restituisce `merge()`.** `merge()` resta una scatola nera pura, economica e ovviamente corretta - questa semplicità è ciò che la rende facile da fidarsi. `merge_report()` aggiunge sopra una reale visibilità dei conflitti per un chiamante (un operatore, uno strumento di debug) che vuole specificamente sapere cosa ha sovrascritto una riconciliazione, senza costringere ogni chiamante del percorso critico `merge()` a pagare per quella contabilità o a gestirla.
 * **Perché i report di conflitto mostrano l'ordine dei timestamp, non un "happened-before" causale.** Un orologio di Lamport garantisce che un vero happens-before causale implichi un timestamp precedente - ma il contrario non è vero: un timestamp precedente NON dimostra che due eventi fossero causalmente correlati anziché semplicemente concorrenti. `MergeConflict` è deliberatamente onesto e riporta solo ciò che un orologio di Lamport può realmente dimostrare (un ordine totale coerente), non un'affermazione di causalità che richiederebbe un orologio vettoriale.
 
@@ -122,14 +123,7 @@ Uno scenario è un file JSON con un array `cells` - ogni cella ha un `id`
 (`{key, value, time}`, con `time` come timestamp Lamport esplicito,
 riprodotto anziché generato dal vivo - lo stesso schema di "input
 esplicito e deterministico" che usa il `seed` di
-HYDRA-UMC-PATH-PLANNER-3D). Le scritture di ogni cella vengono ripiegate
-nella propria mappa, poi la mappa di ogni cella viene fusa due volte -
-una da sinistra a destra (tramite `merge_report()`, così ogni conflitto
-reale lungo il percorso viene registrato), una da destra a sinistra
-(tramite `merge()` normale) - e il risultato stampa `converged: true`
-solo se entrambi gli ordini hanno prodotto lo stesso stato finale, che è
-la vera proprietà del CRDT da cui dipende questo servizio, non solo
-un'assunzione.
+HYDRA-UMC-PATH-PLANNER-3D). Le scritture di ogni cella vengono ripiegate nella propria mappa, poi la mappa di ogni cella viene fusa da sinistra a destra con `merge_report()`, così ogni conflitto reale viene registrato nel risultato. Che la fusione dia lo stesso stato in qualsiasi ordine è una proprietà del CRDT stesso, fissata dai test di proprietà di `src/crdt.rs`, e non viene ricontrollata a ogni chiamata.
 
 Eseguendolo contro `scenarios/example.json` (dove `cell-a` e `cell-b`
 hanno entrambe scritto su `cell-a-node-2`) si vede la vera risoluzione
@@ -141,7 +135,6 @@ del conflitto, non solo il risultato finale opaco:
 ```json
 {
   "cells_merged": 2,
-  "converged": true,
   "merged_state": { "...": "..." },
   "conflicts_resolved": 1,
   "conflicts": [
@@ -162,7 +155,7 @@ cargo test   # l'orologio di Lamport, e il CRDT stesso - incluse verifiche
              # concorrenti, il comportamento proprio di rilevamento
              # conflitti di merge_report(), e una simulazione a 4 celle
              # che dimostra la convergenza attraverso più cicli di
-             # partizione e riconnessione parziale - 62 test in totale
+             # partizione e riconnessione parziale - 70 test in totale
 ```
 
 La stessa chiamata a `reconcile()` è raggiungibile anche tramite una vera

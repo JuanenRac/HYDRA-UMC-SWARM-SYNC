@@ -46,13 +46,20 @@ pub enum ReconcileError {
     /// `LwwMap::merge_report` - see that error type's own header comment.
     /// Refusing to produce a `ReconcileOutput` at all is the real
     /// "rechazo" (rejection) the situation calls for, rather than
-    /// silently reporting a `converged` verdict
+    /// silently reporting a merged state
     /// that papers over an anomaly the merge itself couldn't resolve.
     ImpossibleConflict(IdentityCollision<String, String>),
     /// this node's own Lamport clock reached `u64::MAX` while
     /// reconciling - see `ClockOverflowError`'s own header comment for
     /// why this must surface as a real error rather than a silent wrap.
     ClockOverflow,
+    /// a write carries a Lamport time further ahead than this node accepts
+    /// in one step - see `check_stamps`
+    StampTooFarAhead {
+        key: String,
+        time: u64,
+        limit: u64,
+    },
 }
 
 impl std::fmt::Display for ReconcileError {
@@ -64,6 +71,10 @@ impl std::fmt::Display for ReconcileError {
                 f,
                 "local Lamport clock reached u64::MAX while reconciling - refusing to wrap causal order"
             ),
+            ReconcileError::StampTooFarAhead { key, time, limit } => write!(
+                f,
+                "write to {key:?} carries Lamport time {time}, past the {limit} this node accepts in one step: a time that far ahead could never be overwritten"
+            ),
         }
     }
 }
@@ -71,7 +82,6 @@ impl std::fmt::Display for ReconcileError {
 #[derive(Serialize)]
 pub struct ReconcileOutput {
     pub cells_merged: usize,
-    pub converged: bool,
     pub merged_state: BTreeMap<String, String>,
     pub conflicts_resolved: usize,
     pub conflicts: Vec<MergeConflict<String, String>>,
@@ -101,11 +111,44 @@ fn build_cell_map(
     Ok(map)
 }
 
+/// How far ahead of the newest time this node already knows a single write
+/// may be, unless `--max-time-jump` says otherwise.
+pub const DEFAULT_MAX_TIME_JUMP: u64 = 1_000_000;
+
+/// Refuses a write whose Lamport time is more than `max_jump` past `known`
+/// (the newest time in this node's state, or 0 when it is empty).
+///
+/// The time and the writer of a write are whatever the caller says. A write
+/// with a time near `u64::MAX` wins every conflict for ever and, because the
+/// clock refuses to pass it, can never be overwritten or even followed by an
+/// honest write: the key stays captured until somebody edits the state file
+/// by hand. Bounding each step keeps every value correctable: whatever one
+/// request writes, the next request may go that far again.
+pub fn check_stamps(
+    scenario: &Scenario,
+    known: Option<LamportTime>,
+    max_jump: u64,
+) -> Result<(), ReconcileError> {
+    let limit = known.map_or(0, |t| t.0).saturating_add(max_jump);
+    for cell in &scenario.cells {
+        for w in &cell.writes {
+            if w.time > limit {
+                return Err(ReconcileError::StampTooFarAhead {
+                    key: w.key.clone(),
+                    time: w.time,
+                    limit,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 /// The exact real merge this project's own CLI already runs: merges
-/// every cell's map left-to-right AND right-to-left, and reports
-/// `converged` (both orders reaching the identical final state - the
-/// actual property a real CRDT must have) rather than assuming it.
-/// Delegates to `reconcile_with_prior` with a fresh, empty prior state -
+/// every cell's map left to right and reports every conflict it resolved.
+/// That the merge is order-independent is a property of the CRDT itself,
+/// pinned by the property tests in `crdt.rs`, not something re-checked on
+/// every call. Delegates to `reconcile_with_prior` with a fresh, empty prior state -
 /// exactly this function's own original, unchanged behavior.
 pub fn reconcile(scenario: &Scenario) -> Result<ReconcileOutput, ReconcileError> {
     reconcile_with_prior(scenario, LwwMap::new()).map(|(output, _)| output)
@@ -141,9 +184,8 @@ pub fn reconcile_with_prior(
     // try_fold (not fold) so a real IdentityCollision reported
     // by merge_report stops reconciliation immediately - propagated via
     // `?` below as ReconcileError::ImpossibleConflict, rather than being
-    // silently absorbed into a `converged` verdict that never explains
-    // what actually happened. The backward-order merge (used only to
-    // cross-check convergence) is never even computed once this fires.
+    // silently absorbed into a verdict that never explains what actually
+    // happened.
     let merged_forward =
         maps.iter()
             .skip(1)
@@ -154,15 +196,7 @@ pub fn reconcile_with_prior(
                 conflicts.extend(round_conflicts);
                 Ok(merged)
             })?;
-    let merged_backward = maps
-        .iter()
-        .rev()
-        .skip(1)
-        .fold(maps[maps.len() - 1].clone(), |acc, m| acc.merge(m));
-
-    let forward_snapshot: BTreeMap<String, String> = merged_forward.snapshot();
-    let backward_snapshot: BTreeMap<String, String> = merged_backward.snapshot();
-    let converged = forward_snapshot == backward_snapshot;
+    let merged_forward_snapshot: BTreeMap<String, String> = merged_forward.snapshot();
 
     let mut clock = LamportClock::new();
     if let Some(latest) = merged_forward.max_time() {
@@ -174,8 +208,7 @@ pub fn reconcile_with_prior(
 
     let output = ReconcileOutput {
         cells_merged: scenario.cells.len(),
-        converged,
-        merged_state: forward_snapshot,
+        merged_state: merged_forward_snapshot,
         conflicts_resolved: conflicts.len(),
         conflicts,
         next_local_time: next_local_time.0,

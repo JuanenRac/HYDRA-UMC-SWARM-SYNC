@@ -11,11 +11,10 @@
 // there's real hardware/network infrastructure to build them against.
 // What this DOES prove for real: the CRDT merge
 // itself is commutative, associative and idempotent (see src/crdt.rs's
-// own property tests), and this CLI demonstrates that same convergence
-// on a concrete multi-cell scenario - merging in a different order
-// still produces the identical final state, which is the actual
-// property the README's "Why CRDT-based sync, not a single source of
-// truth" architecture decision depends on.
+// own property tests), the property the README's "Why CRDT-based sync,
+// not a single source of truth" architecture decision depends on. The
+// CLI merges a concrete multi-cell scenario and reports every conflict
+// it resolved.
 //
 // `serve` (new) reaches that exact same reconcile() function over a
 // real HTTP API - still a request/response computation over a scenario
@@ -65,6 +64,18 @@ fn run_serve(args: &[String]) -> ExitCode {
         .filter(|s| !s.is_empty());
 
     let allow_anonymous = args.iter().any(|a| a == "--allow-anonymous");
+    let max_time_jump = match find_flag(args, "--max-time-jump") {
+        Some(raw) => match raw.parse::<u64>() {
+            Ok(n) => n,
+            Err(_) => {
+                eprintln!(
+                    "[swarm-sync] fatal: --max-time-jump must be a whole number, got {raw:?}"
+                );
+                return ExitCode::from(2);
+            }
+        },
+        None => reconcile::DEFAULT_MAX_TIME_JUMP,
+    };
     if let Some(problem) =
         server::startup_problem(&bind_addr, shared_secret.as_deref(), allow_anonymous)
     {
@@ -72,10 +83,24 @@ fn run_serve(args: &[String]) -> ExitCode {
         return ExitCode::from(2);
     }
 
+    // The state is read BEFORE the port is bound: a state file that cannot be
+    // read is a failed start (exit status 2), not a listening process that
+    // quietly exits with success a moment later.
+    let initial_state = match &state_path {
+        Some(path) => match store::load(path) {
+            Ok(map) => map,
+            Err(e) => {
+                eprintln!("[swarm-sync] fatal: could not load state from {path:?}: {e}");
+                return ExitCode::from(2);
+            }
+        },
+        None => crdt::LwwMap::new(),
+    };
+
     match server::bind(&bind_addr) {
         Ok(bound) => {
             eprintln!("[swarm-sync] HTTP API listening on {bind_addr}");
-            eprintln!("[swarm-sync] POST /reconcile, GET /stats, GET /state");
+            eprintln!("[swarm-sync] POST /reconcile, GET /stats, GET /state, GET /health");
             match &state_path {
                 Some(path) => eprintln!("[swarm-sync] persisting this node's own state to {path:?}"),
                 None => eprintln!(
@@ -86,7 +111,13 @@ fn run_serve(args: &[String]) -> ExitCode {
                 Some(_) => eprintln!("[swarm-sync] SWARM_SYNC_SHARED_SECRET set: /reconcile and /state require a matching Authorization: Bearer <token>"),
                 None => eprintln!("[swarm-sync] SWARM_SYNC_SHARED_SECRET not set: /reconcile and /state have NO caller authentication (LAN-trust mode)"),
             }
-            server::run(bound, state_path, shared_secret);
+            server::run(
+                bound,
+                initial_state,
+                state_path,
+                shared_secret,
+                max_time_jump,
+            );
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -109,7 +140,7 @@ fn main() -> ExitCode {
     let Some(scenario_path) = args.get(1) else {
         eprintln!("Usage: hydra-umc-swarm-sync <scenario.json>");
         eprintln!(
-            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--allow-anonymous]"
+            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--allow-anonymous]"
         );
         eprintln!("See scenarios/example.json for the expected format.");
         return ExitCode::SUCCESS;
@@ -138,7 +169,6 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let converged = output.converged;
 
     match serde_json::to_string_pretty(&output) {
         Ok(json) => println!("{json}"),
@@ -146,11 +176,6 @@ fn main() -> ExitCode {
             eprintln!("[swarm-sync] could not serialize result: {e}");
             return ExitCode::FAILURE;
         }
-    }
-
-    if !converged {
-        eprintln!("[swarm-sync] WARNING: merge order changed the result - this would be a real CRDT bug, not expected");
-        return ExitCode::FAILURE;
     }
 
     ExitCode::SUCCESS

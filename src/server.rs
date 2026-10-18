@@ -23,13 +23,18 @@
 
 use std::io::Read;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use serde_json::json;
 use tiny_http::{Header, Method, Response, Server};
 
 use crate::crdt::LwwMap;
-use crate::reconcile::{reconcile_with_prior, Scenario};
+use crate::reconcile::{check_stamps, reconcile_with_prior, ReconcileError, Scenario};
 use crate::store;
+
+/// How many threads serve requests at the same time.
+const WORKER_THREADS: usize = 4;
 
 /// A reconcile scenario is the state of a few cells; a megabyte is far more
 /// than a fleet needs and far less than a body that exhausts the memory of a
@@ -175,36 +180,78 @@ impl SyncEvidence {
     }
 }
 
-pub fn run(server: Server, state_path: Option<PathBuf>, shared_secret: Option<String>) {
-    let mut evidence = SyncEvidence::default();
-    let mut state: LwwMap<String, String> = match &state_path {
-        Some(path) => match store::load(path) {
-            Ok(map) => map,
-            Err(e) => {
-                eprintln!("[swarm-sync] fatal: could not load state from {path:?}: {e}");
-                return;
-            }
-        },
-        None => LwwMap::new(),
-    };
+/// What every worker shares: the node's CRDT state and its sync evidence.
+/// A reconcile holds the state lock from the merge until the new state is on
+/// disk, so two requests can never persist over each other.
+struct Shared {
+    state: Mutex<LwwMap<String, String>>,
+    evidence: Mutex<SyncEvidence>,
+    state_path: Option<PathBuf>,
+    shared_secret: Option<String>,
+    max_time_jump: u64,
+}
 
+/// Serves requests until the listener closes. `initial_state` is what the
+/// caller loaded from `state_path` (main.rs reads it before binding, so a
+/// state file that cannot be read stops the start instead of leaving a
+/// listening process that exits with success). Requests are served by a
+/// small pool of workers: a client that uploads slowly holds one worker,
+/// not the node. `max_time_jump` bounds how far ahead of the newest time in
+/// the state a single write may be (see `reconcile::check_stamps`).
+pub fn run(
+    server: Server,
+    initial_state: LwwMap<String, String>,
+    state_path: Option<PathBuf>,
+    shared_secret: Option<String>,
+    max_time_jump: u64,
+) {
+    let shared = Arc::new(Shared {
+        state: Mutex::new(initial_state),
+        evidence: Mutex::new(SyncEvidence::default()),
+        state_path,
+        shared_secret,
+        max_time_jump,
+    });
+    let server = Arc::new(server);
+    for _ in 1..WORKER_THREADS {
+        let server = Arc::clone(&server);
+        let shared = Arc::clone(&shared);
+        thread::spawn(move || serve(&server, &shared));
+    }
+    serve(&server, &shared);
+}
+
+fn serve(server: &Server, shared: &Shared) {
     for mut request in server.incoming_requests() {
         let path = request.url().split('?').next().unwrap_or("").to_string();
 
+        if path == "/health" && request.method() == &Method::Get {
+            write_json(
+                request,
+                200,
+                &json!({
+                    "status": "ok",
+                    "name": "HYDRA-UMC-SWARM-SYNC",
+                    "version": env!("CARGO_PKG_VERSION"),
+                }),
+            );
+            continue;
+        }
         if path == "/stats" && request.method() == &Method::Get {
+            let sync = shared.evidence.lock().unwrap().to_json(now_ms());
             write_json(
                 request,
                 200,
                 &json!({
                     "role": "CRDT swarm state reconciliation",
-                    "persistent": state_path.is_some(),
-                    "sync": evidence.to_json(now_ms()),
+                    "persistent": shared.state_path.is_some(),
+                    "sync": sync,
                 }),
             );
             continue;
         }
         if path == "/state" && request.method() == &Method::Get {
-            if !is_authorized(&request, &shared_secret) {
+            if !is_authorized(&request, &shared.shared_secret) {
                 write_json(
                     request,
                     401,
@@ -212,14 +259,15 @@ pub fn run(server: Server, state_path: Option<PathBuf>, shared_secret: Option<St
                 );
                 continue;
             }
-            write_json(request, 200, &json!(state.snapshot()));
+            let snapshot = shared.state.lock().unwrap().snapshot();
+            write_json(request, 200, &json!(snapshot));
             continue;
         }
         if path != "/reconcile" || request.method() != &Method::Post {
             write_json(request, 404, &json!({"error": "not found"}));
             continue;
         }
-        if !is_authorized(&request, &shared_secret) {
+        if !is_authorized(&request, &shared.shared_secret) {
             write_json(
                 request,
                 401,
@@ -228,6 +276,19 @@ pub fn run(server: Server, state_path: Option<PathBuf>, shared_secret: Option<St
             continue;
         }
 
+        // a body that announces more than the limit is refused before any of
+        // it is read
+        if request
+            .body_length()
+            .is_some_and(|len| len as u64 > MAX_BODY_BYTES)
+        {
+            write_json(
+                request,
+                413,
+                &json!({"error": format!("request body is larger than {MAX_BODY_BYTES} bytes")}),
+            );
+            continue;
+        }
         let mut raw = String::new();
         match Read::take(request.as_reader(), MAX_BODY_BYTES + 1).read_to_string(&mut raw) {
             Ok(_) if raw.len() as u64 > MAX_BODY_BYTES => {
@@ -261,44 +322,68 @@ pub fn run(server: Server, state_path: Option<PathBuf>, shared_secret: Option<St
             }
         };
 
-        match reconcile_with_prior(&scenario, state.clone()) {
-            Ok((output, merged)) => {
-                // Persist BEFORE responding success - a caller told "200
-                // OK, merged" must be able to trust this node's own next
-                // /reconcile (or a restart) actually remembers it. A
-                // real save failure is a real 500, not a silent "it
-                // worked" that quietly didn't.
-                if let Some(path) = &state_path {
-                    if let Err(e) = store::save(path, &merged) {
-                        write_json(
-                            request,
-                            500,
-                            &json!({"error": format!("merged successfully but could not persist state to {path:?}: {e}")}),
-                        );
-                        continue;
-                    }
-                }
-                state = merged;
-                evidence.reconciles += 1;
-                evidence.conflicts_total += output.conflicts_resolved as u64;
-                evidence.last_reconcile_ms = Some(now_ms());
-                if let Some(conflict) = output.conflicts.last() {
-                    let (winner, loser) = if conflict.kept_remote {
-                        (conflict.remote_writer, conflict.local_writer)
-                    } else {
-                        (conflict.local_writer, conflict.remote_writer)
-                    };
-                    evidence.last_conflict = Some(json!({
-                        "key": conflict.key,
-                        "winnerWriter": winner,
-                        "loserWriter": loser,
-                    }));
-                }
-                write_json(request, 200, &serde_json::to_value(&output).unwrap());
-            }
-            Err(e) => write_json(request, 400, &json!({"error": e.to_string()})),
-        }
+        let (status, body) = reconcile_request(shared, &scenario);
+        write_json(request, status, &body);
     }
+}
+
+/// Merges `scenario` into the node's state, persists the result and answers
+/// with the status and body to send.
+fn reconcile_request(shared: &Shared, scenario: &Scenario) -> (u16, serde_json::Value) {
+    let mut state = shared.state.lock().unwrap();
+    if let Err(e) = check_stamps(scenario, state.max_time(), shared.max_time_jump) {
+        return error_response(&e);
+    }
+    match reconcile_with_prior(scenario, state.clone()) {
+        Ok((output, merged)) => {
+            // Persist BEFORE responding success - a caller told "200
+            // OK, merged" must be able to trust this node's own next
+            // /reconcile (or a restart) actually remembers it. A
+            // real save failure is a real 500, not a silent "it
+            // worked" that quietly didn't.
+            if let Some(path) = &shared.state_path {
+                if let Err(e) = store::save(path, &merged) {
+                    return (
+                        500,
+                        json!({"error": format!("merged successfully but could not persist state to {path:?}: {e}")}),
+                    );
+                }
+            }
+            *state = merged;
+            drop(state);
+            let mut evidence = shared.evidence.lock().unwrap();
+            evidence.reconciles += 1;
+            evidence.conflicts_total += output.conflicts_resolved as u64;
+            evidence.last_reconcile_ms = Some(now_ms());
+            if let Some(conflict) = output.conflicts.last() {
+                let (winner, loser) = if conflict.kept_remote {
+                    (conflict.remote_writer, conflict.local_writer)
+                } else {
+                    (conflict.local_writer, conflict.remote_writer)
+                };
+                evidence.last_conflict = Some(json!({
+                    "key": conflict.key,
+                    "winnerWriter": winner,
+                    "loserWriter": loser,
+                }));
+            }
+            (200, serde_json::to_value(&output).unwrap())
+        }
+        Err(e) => error_response(&e),
+    }
+}
+
+/// What the caller did wrong is a 400 (nothing to merge) or a 422 (a write
+/// this node refuses); a collision or a clock at its limit is a conflict with
+/// the node's own state, a 409.
+fn error_response(e: &ReconcileError) -> (u16, serde_json::Value) {
+    let status = match e {
+        ReconcileError::NoCells => 400,
+        ReconcileError::StampTooFarAhead { .. } => 422,
+        ReconcileError::ImpossibleConflict(_) => 400,
+        ReconcileError::ClockOverflow => 409,
+    };
+    (status, json!({"error": e.to_string()}))
 }
 
 #[cfg(test)]
@@ -326,7 +411,19 @@ mod tests {
             .to_ip()
             .expect("tiny_http always binds a real IP socket for an http:// server")
             .port();
-        thread::spawn(move || run(server, state_path, shared_secret));
+        let initial = match &state_path {
+            Some(path) => store::load(path).expect("the test state file must load"),
+            None => LwwMap::new(),
+        };
+        thread::spawn(move || {
+            run(
+                server,
+                initial,
+                state_path,
+                shared_secret,
+                crate::reconcile::DEFAULT_MAX_TIME_JUMP,
+            )
+        });
         port
     }
 
@@ -390,7 +487,6 @@ mod tests {
         ]}"#;
         let (status, body) = post(port, "/reconcile", scenario);
         assert_eq!(status, 200);
-        assert!(body.contains("\"converged\":true"));
         assert!(body.contains("\"cells_merged\":2"));
     }
 
@@ -686,8 +782,7 @@ mod tests {
             r#"{"cells": [{"id": "cell-a", "writer": 1, "writes": [{"key": "x", "value": "1", "time": 1}]}]}"#,
             Some("s3cr3t"),
         );
-        assert_eq!(status, 200);
-        assert!(body.contains("\"converged\":true"));
+        assert_eq!(status, 200, "{body}");
     }
 
     #[test]
@@ -762,5 +857,101 @@ mod tests {
         assert_eq!(status, 413, "{body}");
         let (status, _) = get(port, "/stats");
         assert_eq!(status, 200);
+    }
+
+    #[test]
+    fn a_write_far_ahead_of_the_state_is_refused_so_no_key_can_be_captured_for_good() {
+        let port = start_test_server();
+        let capture = r#"{"cells": [
+            {"id": "evil", "writer": 18446744073709551615,
+             "writes": [{"key": "robot-1", "value": "estop-cleared", "time": 18446744073709551613}]}
+        ]}"#;
+        let (status, body) = post(port, "/reconcile", capture);
+        assert_eq!(status, 422, "{body}");
+        assert!(body.contains("could never be overwritten"), "{body}");
+        let (_, state) = get(port, "/state");
+        assert_eq!(state, "{}", "nothing of the refused write may be kept");
+
+        // honest steps still work, and a value written one step ahead can be corrected
+        let step = |value: &str, time: u64| {
+            format!(
+                r#"{{"cells": [{{"id": "a", "writer": 1, "writes": [{{"key": "robot-1", "value": "{value}", "time": {time}}}]}}]}}"#
+            )
+        };
+        assert_eq!(post(port, "/reconcile", &step("ESTOP", 5)).0, 200);
+        assert_eq!(post(port, "/reconcile", &step("wrong", 900_000)).0, 200);
+        assert_eq!(post(port, "/reconcile", &step("ESTOP", 1_800_000)).0, 200);
+        let (_, state) = get(port, "/state");
+        assert!(state.contains("ESTOP"), "{state}");
+    }
+
+    #[test]
+    fn errors_are_mapped_to_the_status_that_says_what_went_wrong() {
+        let port = start_test_server();
+        assert_eq!(post(port, "/reconcile", r#"{"cells": []}"#).0, 400);
+        let collision = r#"{"cells": [
+            {"id": "a", "writer": 1, "writes": [
+                {"key": "k", "value": "one", "time": 3},
+                {"key": "k", "value": "two", "time": 3}]}
+        ]}"#;
+        let (status, body) = post(port, "/reconcile", collision);
+        assert_eq!(status, 400, "{body}");
+        assert!(
+            body.contains("\"k\"") || body.contains("k"),
+            "the answer must say which write collided: {body}"
+        );
+    }
+
+    #[test]
+    fn health_answers_without_a_token() {
+        let port = start_test_server_full(None, Some("s3cret".to_string()));
+        let (status, body) = get(port, "/health");
+        assert_eq!(status, 200);
+        assert!(body.contains("HYDRA-UMC-SWARM-SYNC"));
+    }
+
+    #[test]
+    fn a_slow_upload_does_not_stop_the_other_requests() {
+        let port = start_test_server();
+        let mut slow = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        slow.write_all(b"POST /reconcile HTTP/1.1\r\nHost: x\r\nContent-Length: 500000\r\n\r\n{")
+            .unwrap();
+        thread::sleep(std::time::Duration::from_millis(200));
+        let started = std::time::Instant::now();
+        assert_eq!(get(port, "/stats").0, 200);
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        drop(slow);
+    }
+
+    #[test]
+    fn a_body_that_announces_more_than_the_limit_is_refused_without_reading_it() {
+        let port = start_test_server();
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+            .unwrap();
+        stream
+            .write_all(
+                b"POST /reconcile HTTP/1.1\r\nHost: x\r\nContent-Length: 90000000\r\nConnection: close\r\n\r\n",
+            )
+            .unwrap();
+        // the node answers at once but keeps the connection open while it
+        // waits for the body it refused: one read is enough
+        let mut buf = [0u8; 512];
+        let n = stream.read(&mut buf).unwrap_or(0);
+        let raw = String::from_utf8_lossy(&buf[..n]).to_string();
+        assert!(raw.starts_with("HTTP/1.1 413"), "{raw}");
+    }
+
+    #[test]
+    fn a_state_file_in_a_directory_that_does_not_exist_yet_is_created() {
+        let dir = std::env::temp_dir().join(format!("swarm-sync-newdir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let file = dir.join("nested").join("state.json");
+        let port = start_test_server_with_state(Some(file.clone()));
+        let scenario = r#"{"cells": [{"id": "a", "writer": 1, "writes": [{"key": "x", "value": "1", "time": 1}]}]}"#;
+        assert_eq!(post(port, "/reconcile", scenario).0, 200);
+        assert!(file.is_file());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
