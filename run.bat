@@ -28,6 +28,10 @@ echo.
 REM HYDRA_UMC_SCRIPT_STANDARD_BANNER_END
 REM Runs the already-built release binary. Run build.bat first.
 setlocal
+rem Keep the window open for people, never in automation (CI / HYDRA_UMC_CI).
+set "KEEP_OPEN=pause"
+if defined CI set "KEEP_OPEN=ver >nul"
+if "%HYDRA_UMC_CI%"=="1" set "KEEP_OPEN=ver >nul"
 cd /d "%~dp0"
 
 if exist build\hydra-umc-swarm-sync.exe (
@@ -36,8 +40,8 @@ if exist build\hydra-umc-swarm-sync.exe (
     target\release\hydra-umc-swarm-sync.exe %*
 ) else (
     echo No compiled binary found. Run build.bat first.
-    pause
+    %KEEP_OPEN%
     exit /b 1
 )
 endlocal
-pause
+%KEEP_OPEN%
