@@ -98,9 +98,9 @@ HYDRA-UMC-SWARM-SYNC/
 │   └── ci_validate.py # CI 使用的清单/CHANGELOG/文档校验
 ├── build/            # 编译后的二进制文件（build.sh/build.bat 的输出）
 ├── Cargo.toml        # Rust 包清单（名称、版本、依赖项）
-├── bump_version.py   # 原生版本的里程表式递增，由 build.sh/.bat 运行
+├── bump_version.py   # 里程表式版本递增（仅由显式 `bump` 命令运行）
 ├── bump_manifest_version.py # 将 hydra-umc.project.json 的版本与原生版本同步(--sync)
-├── build.sh/.bat     # 递增版本号，然后执行 `cargo build --release`
+├── build.sh/.bat     # 然后执行 `cargo build --release`
 ├── run.sh/.bat       # 运行编译后的二进制文件
 └── README.md
 ```
@@ -125,8 +125,7 @@ run.bat scenarios/example.json
 ./run.sh scenarios/example.json
 ```
 
-`build.sh`/`build.bat` 会递增 `Cargo.toml` 中的版本号（生态系统统一的
-里程表规则，见 `bump_version.py`），然后执行 `cargo build --release`。
+`build.sh`/`build.bat` 不会更改版本号（只有 `python tools/hydra_project_tool.py bump` 才会提升），然后执行 `cargo build --release`。
 `run.sh`/`run.bat` 直接执行生成的二进制文件，并将任何参数（场景路径）
 转发给它。
 

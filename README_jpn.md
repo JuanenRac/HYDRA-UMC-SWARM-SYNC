@@ -98,7 +98,7 @@ HYDRA-UMC-SWARM-SYNC/
 │   └── ci_validate.py # CI が使用するマニフェスト/CHANGELOG/ドキュメント検証
 ├── build/            # コンパイル済みバイナリ（build.sh/build.bat の出力）
 ├── Cargo.toml        # Rust パッケージマニフェスト（名前、バージョン、依存関係）
-├── bump_version.py   # ネイティブバージョンのオドメーター式インクリメント、build.sh/.bat が実行
+├── bump_version.py   # オドメーター式バージョンインクリメント（明示的な `bump` コマンドのみが実行）
 ├── bump_manifest_version.py # hydra-umc.project.json のバージョンをネイティブ版と同期(--sync)
 ├── build.sh/.bat     # バージョンを増加させ、その後 `cargo build --release` を実行
 ├── run.sh/.bat       # コンパイル済みバイナリを実行
@@ -127,8 +127,7 @@ run.bat scenarios/example.json
 ./run.sh scenarios/example.json
 ```
 
-`build.sh`/`build.bat` は `Cargo.toml` のバージョンを増加させ（エコ
-システム全体で統一されたオドメーター規則、`bump_version.py` を参照）、
+`build.sh`/`build.bat` はバージョンを変更せず（上げるのは `python tools/hydra_project_tool.py bump` だけです）、
 その後 `cargo build --release` を実行します。`run.sh`/`run.bat` は
 生成されたバイナリを直接実行し、引数（シナリオのパス）をそのまま
 渡します。

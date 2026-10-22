@@ -98,7 +98,7 @@ HYDRA-UMC-SWARM-SYNC/
 │   └── ci_validate.py # Validazione manifest/CHANGELOG/docs usata dalla CI
 ├── build/            # Binari compilati (output di build.sh/build.bat)
 ├── Cargo.toml        # Manifesto del pacchetto Rust (nome, versione, dep)
-├── bump_version.py   # Bump di versione nativa stile contachilometri
+├── bump_version.py   # Incremento di versione stile contachilometri (eseguito solo dal comando `bump` esplicito)
 ├── bump_manifest_version.py # Sincronizza la versione di hydra-umc.project.json con quella nativa (--sync)
 ├── build.sh/.bat     # Aggiorna la versione, poi `cargo build --release`
 ├── run.sh/.bat       # Esegue il binario compilato
@@ -126,8 +126,7 @@ run.bat scenarios/example.json
 ./run.sh scenarios/example.json
 ```
 
-`build.sh`/`build.bat` aggiornano la versione in `Cargo.toml` (regola
-contachilometri dell'ecosistema, vedi `bump_version.py`) e poi eseguono
+`build.sh`/`build.bat` non cambiano mai la versione (solo `python tools/hydra_project_tool.py bump` la alza) e poi eseguono
 `cargo build --release`. `run.sh`/`run.bat` eseguono direttamente il binario
 risultante, inoltrando qualsiasi argomento (il percorso dello scenario).
 

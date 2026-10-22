@@ -100,9 +100,9 @@ HYDRA-UMC-SWARM-SYNC/
 │   └── ci_validate.py # Validação de manifesto/CHANGELOG/docs usada pelo CI
 ├── build/            # Binários compilados (saída de build.sh/build.bat)
 ├── Cargo.toml        # Manifesto do pacote Rust (nome, versão, dependências)
-├── bump_version.py   # Subida de versão nativa estilo odómetro, executada por build.sh/.bat
+├── bump_version.py   # Subida de versão ao estilo conta-quilómetros (executada só pelo comando `bump` explícito)
 ├── bump_manifest_version.py # Sincroniza a versão do hydra-umc.project.json com a nativa (--sync)
-├── build.sh/.bat     # Sobe a versão e depois `cargo build --release`
+├── build.sh/.bat     # Valida e compila (compilar nunca altera a versão)
 ├── run.sh/.bat       # Executa o binário compilado
 └── README.md
 ```
@@ -125,7 +125,7 @@ run.bat scenarios/example.json
 ./run.sh scenarios/example.json
 ```
 
-O `build.sh`/`build.bat` sobe a versão no `Cargo.toml` (regra de odómetro de todo o ecossistema, ver `bump_version.py`) e depois executa `cargo build --release`. O `run.sh`/`run.bat` executa diretamente o binário resultante, reencaminhando para ele quaisquer argumentos (o caminho do cenário).
+`build.sh`/`build.bat` nunca altera a versão (só `python tools/hydra_project_tool.py bump` a sobe) e depois executa `cargo build --release`. O `run.sh`/`run.bat` executa diretamente o binário resultante, reencaminhando para ele quaisquer argumentos (o caminho do cenário).
 
 Um cenário é um ficheiro JSON com um array `cells` - cada célula tem um `id` (para legibilidade), um ID de `writer` e uma lista de `writes` (`{key, value, time}`, sendo `time` um carimbo de Lamport explícito, reproduzido em vez de gerado em direto - o mesmo padrão de «entrada explícita e determinista» que o `seed` do HYDRA-UMC-PATH-PLANNER-3D usa). As escritas de cada célula são dobradas no seu próprio mapa, e depois o mapa de cada célula é fundido da esquerda para a direita com `merge_report()`, pelo que cada conflito real fica registado no resultado. Que a fusão dê o mesmo estado em qualquer ordem é uma propriedade do próprio CRDT, fixada pelos testes de propriedades de `src/crdt.rs`, e não é verificada de novo em cada chamada.
 
