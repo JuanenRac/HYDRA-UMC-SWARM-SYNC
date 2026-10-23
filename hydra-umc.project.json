@@ -22,6 +22,7 @@
     "pattern": "^version\\s*=\\s*\"(\\d+)\\.(\\d+)\\.(\\d+)\""
   },
   "service": {
-    "systemd_unit": "hydra-umc-swarm-sync.service"
+    "systemd_unit": "hydra-umc-swarm-sync.service",
+    "health_path": "/health"
   }
 }
