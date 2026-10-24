@@ -103,6 +103,7 @@ HYDRA-UMC-SWARM-SYNC/
 │   ├── server.rs     # 简洁的 JSON/HTTP 接口(tiny_http) - 通过网络的 POST /reconcile
 │   └── store.rs      # 真实的、可选的按节点持久化(--state-file):抗崩溃的 JSON 状态文件
 ├── scenarios/        # 示例 JSON 场景（见下方"构建与运行"）
+├── tests/            # startup.rs: 状态文件不可读、最大时间跳变无效或 gossip 设置不可用时,程序拒绝启动
 ├── docs/
 │   └── CLI_REFERENCE.md # 命令参考
 ├── images/
@@ -111,7 +112,10 @@ HYDRA-UMC-SWARM-SYNC/
 │   └── hydra-umc-swarm-sync.service # 本地 CM5 协调 API 的 systemd 单元
 ├── tools/
 │   ├── build_test.py # 不递增版本号的构建检查
-│   └── ci_validate.py # CI 使用的清单/CHANGELOG/文档校验
+│   ├── ci_validate.py # CI 使用的清单/CHANGELOG/文档校验
+│   ├── _doc_policy.py # 家族共享的文档规则 (HYDRA-UMC-SDK 的副本,保持同步)
+│   ├── _readme_parity.py # 检查八个 README 结构一致 (HYDRA-UMC-SDK 的副本,保持同步)
+│   └── hydra_project_tool.py # 每个仓库相同的命令: validate、test、ci、version、status、bump
 ├── build/            # 编译后的二进制文件（build.sh/build.bat 的输出）
 ├── Cargo.toml        # Rust 包清单（名称、版本、依赖项）
 ├── bump_version.py   # 里程表式版本递增（仅由显式 `bump` 命令运行）

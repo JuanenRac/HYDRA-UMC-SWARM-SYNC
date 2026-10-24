@@ -103,6 +103,7 @@ HYDRA-UMC-SWARM-SYNC/
 │   ├── server.rs     # Einfache JSON/HTTP-Oberfläche (tiny_http) - POST /reconcile übers Netz
 │   └── store.rs      # Echte optionale Persistenz pro Knoten (--state-file): eine absturzsichere JSON-Zustandsdatei
 ├── scenarios/        # Beispiel-JSON-Szenarien (siehe BUILD UND AUSFÜHRUNG unten)
+├── tests/            # startup.rs: das Programm verweigert den Start bei unlesbarer Zustandsdatei, ungültigem maximalem Zeitsprung oder unbrauchbaren Gossip-Einstellungen
 ├── docs/
 │   └── CLI_REFERENCE.md # Befehlsreferenz
 ├── images/
@@ -111,7 +112,10 @@ HYDRA-UMC-SWARM-SYNC/
 │   └── hydra-umc-swarm-sync.service # systemd-Unit der lokalen CM5-Abgleich-API
 ├── tools/
 │   ├── build_test.py # Nicht-versionierender Build-Check
-│   └── ci_validate.py # Manifest/CHANGELOG/Docs-Validierung, von CI genutzt
+│   ├── ci_validate.py # Manifest/CHANGELOG/Docs-Validierung, von CI genutzt
+│   ├── _doc_policy.py # Von der Familie geteilte Dokumentationsregeln (Kopie der von HYDRA-UMC-SDK, synchron gehalten)
+│   ├── _readme_parity.py # Prüfung, dass die acht READMEs dieselbe Struktur haben (Kopie der von HYDRA-UMC-SDK, synchron gehalten)
+│   └── hydra_project_tool.py # Dieselben Befehle in jedem Repository: validate, test, ci, version, status, bump
 ├── build/            # Kompilierte Binärdateien (Ausgabe von build.sh/.bat)
 ├── Cargo.toml        # Rust-Paketmanifest (Name, Version, Abhängigkeiten)
 ├── bump_version.py   # Versionserhöhung im Kilometerzähler-Stil (nur vom expliziten `bump`-Befehl ausgeführt)

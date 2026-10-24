@@ -103,6 +103,7 @@ HYDRA-UMC-SWARM-SYNC/
 │   ├── server.rs     # シンプルなJSON/HTTPサーフェス(tiny_http) - ネットワーク経由のPOST /reconcile
 │   └── store.rs      # 実際の任意のノードごとの永続化(--state-file):クラッシュ耐性のあるJSON状態ファイル
 ├── scenarios/        # サンプル JSON シナリオ(下記「ビルドと実行」参照)
+├── tests/            # startup.rs: 状態ファイルが読めない、最大時間ジャンプが不正、gossip 設定が使えない場合に起動を拒否する
 ├── docs/
 │   └── CLI_REFERENCE.md # コマンドリファレンス
 ├── images/
@@ -111,7 +112,10 @@ HYDRA-UMC-SWARM-SYNC/
 │   └── hydra-umc-swarm-sync.service # ローカルCM5調整APIのsystemdユニット
 ├── tools/
 │   ├── build_test.py # バージョンを増やさないビルドチェック
-│   └── ci_validate.py # CI が使用するマニフェスト/CHANGELOG/ドキュメント検証
+│   ├── ci_validate.py # CI が使用するマニフェスト/CHANGELOG/ドキュメント検証
+│   ├── _doc_policy.py # ファミリー共通のドキュメント規則 (HYDRA-UMC-SDK のコピーで、同期を維持)
+│   ├── _readme_parity.py # 8つの README が同じ構造であることの検査 (HYDRA-UMC-SDK のコピーで、同期を維持)
+│   └── hydra_project_tool.py # すべてのリポジトリで共通のコマンド: validate、test、ci、version、status、bump
 ├── build/            # コンパイル済みバイナリ（build.sh/build.bat の出力）
 ├── Cargo.toml        # Rust パッケージマニフェスト（名前、バージョン、依存関係）
 ├── bump_version.py   # オドメーター式バージョンインクリメント（明示的な `bump` コマンドのみが実行）

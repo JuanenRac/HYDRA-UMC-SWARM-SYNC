@@ -103,6 +103,7 @@ HYDRA-UMC-SWARM-SYNC/
 │   ├── server.rs     # Superficie JSON/HTTP plana (tiny_http) - POST /reconcile por red
 │   └── store.rs      # Persistencia real y opcional por nodo (--state-file): un fichero de estado JSON a prueba de fallos
 ├── scenarios/        # Escenarios JSON de ejemplo (ver BUILD Y EJECUCIÓN abajo)
+├── tests/            # startup.rs: el binario se niega a arrancar con un fichero de estado ilegible, un salto máximo de tiempo erróneo o ajustes de gossip inservibles
 ├── docs/
 │   └── CLI_REFERENCE.md # Referencia de comandos
 ├── images/
@@ -111,7 +112,10 @@ HYDRA-UMC-SWARM-SYNC/
 │   └── hydra-umc-swarm-sync.service # Unidad systemd de la API local de reconciliación en la CM5
 ├── tools/
 │   ├── build_test.py # Comprobación de compilación sin versionado
-│   └── ci_validate.py # Validación de manifiesto/CHANGELOG/docs usada por CI
+│   ├── ci_validate.py # Validación de manifiesto/CHANGELOG/docs usada por CI
+│   ├── _doc_policy.py # Reglas de documentación compartidas por la familia (copia de la de HYDRA-UMC-SDK, mantenida en sincronía)
+│   ├── _readme_parity.py # Comprobación de que los ocho README comparten estructura (copia de la de HYDRA-UMC-SDK, mantenida en sincronía)
+│   └── hydra_project_tool.py # Los mismos comandos en todos los repositorios: validate, test, ci, version, status, bump
 ├── build/            # Binarios compilados (salida de build.sh/build.bat)
 ├── Cargo.toml        # Manifiesto del paquete Rust (nombre, versión, deps)
 ├── bump_version.py   # Incremento de versión tipo cuentakilómetros (solo lo ejecuta el comando `bump` explícito)

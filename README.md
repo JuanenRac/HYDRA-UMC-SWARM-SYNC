@@ -103,6 +103,7 @@ HYDRA-UMC-SWARM-SYNC/
 │   ├── server.rs     # Plain JSON/HTTP surface (tiny_http) - POST /reconcile over the network
 │   └── store.rs      # Real opt-in per-node persistence (--state-file): a crash-safe JSON state file
 ├── scenarios/        # Example JSON scenarios (see BUILD & RUN below)
+├── tests/            # startup.rs: the binary refuses to start on an unreadable state file, a bad max time jump or unusable gossip settings
 ├── docs/
 │   └── CLI_REFERENCE.md # Command reference
 ├── images/
@@ -111,7 +112,10 @@ HYDRA-UMC-SWARM-SYNC/
 │   └── hydra-umc-swarm-sync.service # Local CM5 reconciliation API systemd unit
 ├── tools/
 │   ├── build_test.py # Non-versioning build/compile check
-│   └── ci_validate.py # Manifest/CHANGELOG/docs validation used by CI
+│   ├── ci_validate.py # Manifest/CHANGELOG/docs validation used by CI
+│   ├── _doc_policy.py # Documentation rules shared by the family (a copy of HYDRA-UMC-SDK's, kept in sync)
+│   ├── _readme_parity.py # Check that the eight READMEs share one structure (a copy of HYDRA-UMC-SDK's, kept in sync)
+│   └── hydra_project_tool.py # The same commands in every repository: validate, test, ci, version, status, bump
 ├── build/            # Compiled binaries (build.sh/build.bat output)
 ├── Cargo.toml        # Rust package manifest (name, version, deps)
 ├── bump_version.py   # Odometer-style version bump (run only by the explicit `bump` command)
