@@ -23,7 +23,7 @@
 
 | | |
 |---|---|
-| バージョン | `0.1.4` |
+| バージョン | `0.1.5` |
 | 成熟度 | 機能する |
 | テスト | 70 (`cargo test`) |
 | 技術 | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
