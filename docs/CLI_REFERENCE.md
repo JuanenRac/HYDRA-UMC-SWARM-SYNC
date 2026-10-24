@@ -33,7 +33,7 @@ $ hydra-umc-swarm-sync
 HYDRA-UMC-SWARM-SYNC v0.1.3
 CRDT swarm state reconciliation service: merges every HydraNode cell's view of swarm state into one convergent, order-independent result.
 Usage: hydra-umc-swarm-sync <scenario.json>
-       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--allow-anonymous]
+       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--allow-anonymous]
 See scenarios/example.json for the expected format.
 ```
 
@@ -248,3 +248,14 @@ decision). What this CLI/HTTP API does prove for real is the CRDT merge
 property itself — commutative, associative, and idempotent — on a
 concrete multi-cell scenario, whether driven by a local file or a network
 request.
+
+## Exchanging state with other nodes
+
+| Flag | Meaning |
+| --- | --- |
+| `--peer http://host:port` | A node to ask for its state; repeat for each one. Only `http://` is spoken (a peer behind TLS is reached through a tunnel). The node sends `SWARM_SYNC_SHARED_SECRET` as the bearer token, so the peers must share it |
+| `--gossip-interval-ms N` | Pause between two rounds, at least 1000 (default 10000) |
+| `--gossip-push` | Also send this node's state to each peer (`POST /merge`) after pulling theirs |
+| `--max-generation-jump N` | How far past the generation this node holds for a key an incoming entry may be (default 1000) |
+
+Routes: `GET /state?full=1` answers `{"entries": [{"key", "value" (null for a deleted key), "time", "writer", "generation"}]}`; `POST /merge` takes `{"entries": [...]}` of that shape and answers `entries_received`, `conflicts_resolved`, `conflicts` (each with both generations) and `next_local_time`; an entry with a time or a generation too far ahead, an empty or oversized key, a value over 64 KiB or generation 0 is refused with `422`, the same stamp claiming two values with `400`. A `Write` of a `/reconcile` scenario may carry `"deleted": true` (its `value` is then ignored). `GET /stats` adds `peers` (rounds, last success age, last error, entries pulled and pushed per peer) and `sync.merges`.

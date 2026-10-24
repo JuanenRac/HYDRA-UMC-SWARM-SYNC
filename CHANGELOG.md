@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **Two nodes can now exchange their full state, and a node can follow its peers.** `GET /state?full=1` answers every entry with its time, writer and generation, tombstones included; `POST /merge` merges entries of that shape after checking them (size, a time within `--max-time-jump`, a generation within the new `--max-generation-jump` of the key's own, no generation 0); a `Write` of a scenario may carry `deleted: true`. `--peer URL` (repeatable), `--gossip-interval-ms` (at least 1000) and `--gossip-push` make the node ask its peers for their state, and optionally send its own, with the shared secret as bearer token; `GET /stats` reports each peer and the number of merges. A reported conflict now carries both generations, and the code documents that the generation is compared before the time. Tried between nodes on one machine, never across a real partition.
 - The manifest declares the health path of the service (`service.health_path: /health`), so the ecosystem status and the service registry of the SDK can probe it over HTTP and not only by its port.
 - Building no longer changes the version; raising it is the explicit `bump` command (`python tools/hydra_project_tool.py bump`). The build scripts only report the version they built, and CI fails if a build script runs a bump.
 - The banner follows the animated style of the ecosystem banners, with the name, the kind and the technologies of the project.

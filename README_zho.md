@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="CRDT">
 </p>
 
-**诚实核查 - 今天真正能运行的部分：** Lamport 逻辑时钟(`src/lamport.rs`)、经属性测试证明满足交换律/结合律/幂等性(而不仅仅是用一个例子肉眼验证)的 LWW-Element-Map CRDT 合并(`src/crdt.rs`)、CLI 与服务端共享的协调逻辑(`src/reconcile.rs`)、真实的、经过真正杀死并重启二进制文件验证的崩溃安全的按节点持久化(`src/store.rs`、`--state-file`)，以及公开这一切的 JSON/HTTP 服务器(`src/server.rs`、`tiny_http`、`POST /reconcile`、`GET /stats`)都是真实的并经过测试(70 个测试，`cargo test`)，包括一个 4 单元模拟测试，证明了在多轮分区和部分重连中收敛性依然成立。尚不真实的部分：PTP(IEEE 1588)硬件时间戳，即本 README 自身的徽章和"超精密同步"/"硬件时间戳"条目所描述的亚 100ns 精度——本 crate 中没有任何 PTP 代码，这部分将推迟到有真实的网卡/硬件定时器可供验证为止(见下方 ARCHITECTURE)。今天真实存在并经过测试的，是 CRDT 合并实际需要的逻辑(Lamport)时钟，而不是真正的硬件时钟同步。具体已交付的内容请见 `CHANGELOG.md`，尚待完成的部分请见下方 ROADMAP。
+**诚实核查 - 今天真正能运行的部分：** Lamport 逻辑时钟(`src/lamport.rs`)、经属性测试证明满足交换律/结合律/幂等性(而不仅仅是用一个例子肉眼验证)的 LWW-Element-Map CRDT 合并(`src/crdt.rs`)、CLI 与服务端共享的协调逻辑(`src/reconcile.rs`)、真实的、经过真正杀死并重启二进制文件验证的崩溃安全的按节点持久化(`src/store.rs`、`--state-file`)，以及公开这一切的 JSON/HTTP 服务器(`src/server.rs`、`tiny_http`、`POST /reconcile`、`GET /stats`)都是真实的并经过测试(102 个测试，`cargo test`)，包括一个 4 单元模拟测试，证明了在多轮分区和部分重连中收敛性依然成立。尚不真实的部分：PTP(IEEE 1588)硬件时间戳，即本 README 自身的徽章和"超精密同步"/"硬件时间戳"条目所描述的亚 100ns 精度——本 crate 中没有任何 PTP 代码，这部分将推迟到有真实的网卡/硬件定时器可供验证为止(见下方 ARCHITECTURE)。今天真实存在并经过测试的，是 CRDT 合并实际需要的逻辑(Lamport)时钟，而不是真正的硬件时钟同步。具体已交付的内容请见 `CHANGELOG.md`，尚待完成的部分请见下方 ROADMAP。
 
 ---
 
@@ -43,6 +43,7 @@
 * 🛡️ **抗重连的 CRDT 合并(今天真实可用)：** 一个真实的 4 单元模拟测试(`cargo test`)证明了收敛性在多轮分区和部分重连中依然成立——这是对某个单元离线后又重新加入的韧性，而不是本 crate 未曾测量的、针对真实网络数据包抖动/延迟的韧性。
 * 🔍 **真实的冲突可见性与集群规模的收敛证明（v0）：** `merge_report()` 会返回一份真实的、按键分类的记录，列出协调过程中解决的每一个真实写入冲突——哪个单元战胜了哪个单元，用的是什么时间戳。一个 4 单元的模拟测试证明了收敛性在多轮分区和部分重连中依然成立，而不仅仅是两个单元之间的一次性合并。
 * 💾 **真实的按节点持久化(`--state-file`):** `serve` 模式自身的 CRDT 状态现在能在真实的进程重启后存活(`src/store.rs`)——每次 `POST /reconcile` 都会合并进该节点自身的状态并持久化更新,而不是每次调用都从零开始——已针对真实的、被终止后重新启动的进程完成验证,而不仅仅是进程内测试。未配置时,保持原有的纯内存行为。详见 `docs/CLI_REFERENCE.md`。
+* 🔁 **完整状态交换与 gossip 客户端:** `GET /state?full=1` 返回每个条目及其时间、写入者和世代(包括已删除的键,即墓碑),`POST /merge` 接收它们,因此无论双方在此期间写入或删除了什么,一个节点都能从另一个节点追平;场景中的 `Write` 现在可以带 `"deleted": true`。条目在触及映射之前会被检查(大小、时间最多领先 `--max-time-jump`、世代最多领先该键自身世代 `--max-generation-jump`)。使用 `--peer http://host:port`(每个节点重复一次)时,节点每隔 `--gossip-interval-ms`(至少 1000)向对等节点索取状态,并在加 `--gossip-push` 时发送自己的状态;对等节点共享 `SWARM_SYNC_SHARED_SECRET`,`GET /stats` 报告每个对等节点。世代先于时间比较(多次删除并重建某个键的副本会胜过之后的普通写入),报告的冲突现在会写出两边的世代。*(已在同一台机器上的节点之间试过,从未在真实分区中验证)*
 * 🔐 **真实的可选共享密钥认证(`SWARM_SYNC_SHARED_SECRET`):** 未配置时,本项目保持原有的局域网信任姿态——任何调用方都可以执行 `POST /reconcile` 或 `GET /state`。配置后(仅通过环境变量,绝不通过命令行参数——共享密钥应属于环境变量/systemd 单元,而非进程列表),两个路由都要求携带匹配的 `Authorization: Bearer <token>`,并以恒定时间比较。`GET /stats` 在两种情况下都保持开放。
 * 🧱 **拒绝成为网络上的开放节点，且请求体有上限（v0）：** 在非回环地址上运行 `serve` 需要 `SWARM_SYNC_SHARED_SECRET`（实验室环境可显式使用 `--allow-anonymous`），因为一个会合并网络上任意机器所发送内容的节点，会让该机器改写蜂群对自身的认知；超过 1 MiB 的请求体会在读取之前就被以 `413` 拒绝；状态文件在替换旧文件之前会被强制写入磁盘，因此断电不会留下被截断或为空的状态。*（已实现）*
 
@@ -83,6 +84,8 @@ HYDRA-UMC-SWARM-SYNC/
 │   ├── main.rs       # CLI 入口点：加载场景、协调、打印 JSON
 │   ├── lamport.rs    # LamportClock——CRDT 排序背后的逻辑时钟
 │   ├── crdt.rs       # LwwMap——真正的 CRDT：set/get/merge/snapshot
+│   ├── entries.rs    # Stamped entries: GET /state?full=1, POST /merge and their checks
+│   ├── gossip.rs     # Anti-entropy client: asks the peers for their state
 │   ├── reconcile.rs  # 真实的协调逻辑,拆分出来以便 server.rs 也能使用
 │   ├── server.rs     # 简洁的 JSON/HTTP 接口(tiny_http) - 通过网络的 POST /reconcile
 │   └── store.rs      # 真实的、可选的按节点持久化(--state-file):抗崩溃的 JSON 状态文件
@@ -163,7 +166,7 @@ cargo test   # Lamport 时钟，以及 CRDT 本身——包括直接验证 merge
              # 例子上"看起来正确"）、一个针对真正并发写入的确定性
              # 平局判定测试、merge_report() 自身的冲突检测行为，以及
              # 一个证明多轮分区和部分重连后依然收敛的 4 单元模拟——
-             # 共 70 个测试
+             # 共 102 个测试
 ```
 
 同一个 `reconcile()` 调用也可以通过真实的 JSON/HTTP API

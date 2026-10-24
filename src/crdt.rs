@@ -291,6 +291,11 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
         self.entries.get(key).and_then(|e| e.value.as_ref())
     }
 
+    /// The generation this map holds for `key` (a tombstone counts), 0 when it never saw the key. A remote entry is measured against it.
+    pub fn generation_of(&self, key: &K) -> u64 {
+        self.entries.get(key).map_or(0, |e| e.stamp.generation)
+    }
+
     /// Every entry's full real state - key, value (`None` for a real
     /// tombstone - see this module's own header comment), and the exact
     /// (generation, time, writer) stamp `set`/`remove`/`merge` resolved
@@ -478,9 +483,11 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
                     let kept_remote = other_entry.stamp > existing.stamp;
                     conflicts.push(MergeConflict {
                         key: key.clone(),
+                        local_generation: existing.stamp.generation,
                         local_time: existing.stamp.time,
                         local_writer: existing.stamp.writer,
                         local_value: existing.value.clone(),
+                        remote_generation: other_entry.stamp.generation,
                         remote_time: other_entry.stamp.time,
                         remote_writer: other_entry.stamp.writer,
                         remote_value: other_entry.value.clone(),
@@ -540,11 +547,16 @@ impl<K: std::fmt::Debug, V: std::fmt::Debug> std::error::Error for IdentityColli
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct MergeConflict<K, V> {
     pub key: K,
+    /// The generation counts how many times a key went from present to deleted and back, and it is compared BEFORE the time: a replica that
+    /// deleted and recreated a key more often wins over a later plain write of another replica, whatever the times say. That is what keeps a
+    /// delete from being undone by a stale add, and it is why `kept_remote` can look contrary to the times when the generations differ.
+    pub local_generation: u64,
     pub local_time: LamportTime,
     pub local_writer: u64,
     /// `None` means that side is a real tombstone (the key was
     /// genuinely deleted there), not a missing/unknown value.
     pub local_value: Option<V>,
+    pub remote_generation: u64,
     pub remote_time: LamportTime,
     pub remote_writer: u64,
     pub remote_value: Option<V>,

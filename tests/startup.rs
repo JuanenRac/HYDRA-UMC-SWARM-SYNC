@@ -41,3 +41,29 @@ fn a_max_time_jump_that_is_not_a_number_stops_the_start() {
         .expect("the binary must run");
     assert_eq!(output.status.code(), Some(2));
 }
+
+#[test]
+fn gossip_settings_that_cannot_be_used_stop_the_start() {
+    for args in [
+        vec!["--peer", "https://10.0.0.7:8112"],
+        vec!["--peer", "10.0.0.7"],
+        vec!["--peer"],
+        vec!["--gossip-interval-ms", "10"],
+        vec!["--gossip-interval-ms", "often"],
+        vec!["--max-generation-jump", "0"],
+        vec!["--max-generation-jump", "many"],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_hydra-umc-swarm-sync"))
+            .args(["serve", "--port", "0"])
+            .args(&args)
+            .stdin(Stdio::null())
+            .output()
+            .expect("the binary must run");
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}

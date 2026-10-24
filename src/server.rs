@@ -30,6 +30,11 @@ use serde_json::json;
 use tiny_http::{Header, Method, Response, Server};
 
 use crate::crdt::LwwMap;
+use crate::entries::{
+    check_entries, merge_entries, state_entries, MergeRequest, StampedEntry,
+    DEFAULT_MAX_GENERATION_JUMP,
+};
+use crate::gossip::{self, Peer};
 use crate::reconcile::{check_stamps, reconcile_with_prior, ReconcileError, Scenario};
 use crate::store;
 
@@ -157,6 +162,8 @@ pub fn bind(addr: &str) -> std::io::Result<Server> {
 #[derive(Default)]
 struct SyncEvidence {
     reconciles: u64,
+    /// Merges of stamped entries (from a peer or from `POST /merge`).
+    merges: u64,
     conflicts_total: u64,
     last_reconcile_ms: Option<u64>,
     last_conflict: Option<serde_json::Value>,
@@ -173,6 +180,7 @@ impl SyncEvidence {
     fn to_json(&self, now: u64) -> serde_json::Value {
         json!({
             "reconciles": self.reconciles,
+            "merges": self.merges,
             "conflictsResolved": self.conflicts_total,
             "lastReconcileAgeMs": self.last_reconcile_ms.map(|t| now.saturating_sub(t)),
             "lastConflict": self.last_conflict,
@@ -189,6 +197,43 @@ struct Shared {
     state_path: Option<PathBuf>,
     shared_secret: Option<String>,
     max_time_jump: u64,
+    max_generation_jump: u64,
+    gossip: Mutex<Vec<PeerEvidence>>,
+}
+
+/// What this node knows of its exchange with one peer.
+struct PeerEvidence {
+    address: String,
+    rounds: u64,
+    last_ok_ms: Option<u64>,
+    last_error: Option<String>,
+    entries_pulled: u64,
+    entries_pushed: u64,
+}
+
+/// The peers this node asks for their state, and how.
+#[derive(Clone)]
+pub struct GossipConfig {
+    pub peers: Vec<Peer>,
+    pub interval: std::time::Duration,
+    /// Also send this node's state to each peer (`POST /merge`) after pulling theirs.
+    pub push: bool,
+}
+
+/// What `run_with` takes besides the socket and the state.
+#[derive(Clone)]
+pub struct Extra {
+    pub max_generation_jump: u64,
+    pub gossip: Option<GossipConfig>,
+}
+
+impl Default for Extra {
+    fn default() -> Self {
+        Extra {
+            max_generation_jump: DEFAULT_MAX_GENERATION_JUMP,
+            gossip: None,
+        }
+    }
 }
 
 /// Serves requests until the listener closes. `initial_state` is what the
@@ -198,6 +243,7 @@ struct Shared {
 /// small pool of workers: a client that uploads slowly holds one worker,
 /// not the node. `max_time_jump` bounds how far ahead of the newest time in
 /// the state a single write may be (see `reconcile::check_stamps`).
+#[cfg(test)]
 pub fn run(
     server: Server,
     initial_state: LwwMap<String, String>,
@@ -205,13 +251,55 @@ pub fn run(
     shared_secret: Option<String>,
     max_time_jump: u64,
 ) {
+    run_with(
+        server,
+        initial_state,
+        state_path,
+        shared_secret,
+        max_time_jump,
+        Extra::default(),
+    );
+}
+
+/// `run`, with the bound on generations and the gossip client.
+pub fn run_with(
+    server: Server,
+    initial_state: LwwMap<String, String>,
+    state_path: Option<PathBuf>,
+    shared_secret: Option<String>,
+    max_time_jump: u64,
+    extra: Extra,
+) {
+    let peers: Vec<PeerEvidence> = extra
+        .gossip
+        .as_ref()
+        .map(|g| {
+            g.peers
+                .iter()
+                .map(|p| PeerEvidence {
+                    address: format!("{}{}", p.host_port, p.prefix),
+                    rounds: 0,
+                    last_ok_ms: None,
+                    last_error: None,
+                    entries_pulled: 0,
+                    entries_pushed: 0,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let shared = Arc::new(Shared {
         state: Mutex::new(initial_state),
         evidence: Mutex::new(SyncEvidence::default()),
         state_path,
         shared_secret,
         max_time_jump,
+        max_generation_jump: extra.max_generation_jump,
+        gossip: Mutex::new(peers),
     });
+    if let Some(config) = extra.gossip {
+        let shared = Arc::clone(&shared);
+        thread::spawn(move || gossip_loop(&shared, &config));
+    }
     let server = Arc::new(server);
     for _ in 1..WORKER_THREADS {
         let server = Arc::clone(&server);
@@ -246,6 +334,7 @@ fn serve(server: &Server, shared: &Shared) {
                     "role": "CRDT swarm state reconciliation",
                     "persistent": shared.state_path.is_some(),
                     "sync": sync,
+                    "peers": peers_json(shared, now_ms()),
                 }),
             );
             continue;
@@ -259,11 +348,21 @@ fn serve(server: &Server, shared: &Shared) {
                 );
                 continue;
             }
+            if request
+                .url()
+                .split_once('?')
+                .is_some_and(|(_, q)| q.split('&').any(|p| p == "full=1"))
+            {
+                // every entry with its stamp, tombstones included: what a peer needs to merge
+                let entries = state_entries(&shared.state.lock().unwrap());
+                write_json(request, 200, &json!({ "entries": entries }));
+                continue;
+            }
             let snapshot = shared.state.lock().unwrap().snapshot();
             write_json(request, 200, &json!(snapshot));
             continue;
         }
-        if path != "/reconcile" || request.method() != &Method::Post {
+        if !matches!(path.as_str(), "/reconcile" | "/merge") || request.method() != &Method::Post {
             write_json(request, 404, &json!({"error": "not found"}));
             continue;
         }
@@ -308,6 +407,23 @@ fn serve(server: &Server, shared: &Shared) {
                 );
                 continue;
             }
+        }
+
+        if path == "/merge" {
+            let merge: MergeRequest = match serde_json::from_str(&raw) {
+                Ok(m) => m,
+                Err(e) => {
+                    write_json(
+                        request,
+                        400,
+                        &json!({"error": format!("malformed merge JSON: {e}")}),
+                    );
+                    continue;
+                }
+            };
+            let (status, body) = merge_request(shared, &merge.entries);
+            write_json(request, status, &body);
+            continue;
         }
 
         let scenario: Scenario = match serde_json::from_str(&raw) {
@@ -373,6 +489,117 @@ fn reconcile_request(shared: &Shared, scenario: &Scenario) -> (u16, serde_json::
     }
 }
 
+/// Merges stamped entries (from a peer or `POST /merge`) into the node's state, persists the result and answers with the status and body.
+fn merge_request(shared: &Shared, entries: &[StampedEntry]) -> (u16, serde_json::Value) {
+    let mut state = shared.state.lock().unwrap();
+    if let Err(e) = check_entries(
+        entries,
+        &state,
+        shared.max_time_jump,
+        shared.max_generation_jump,
+    ) {
+        return error_response(&e);
+    }
+    match merge_entries(entries, state.clone()) {
+        Ok((output, merged)) => {
+            if let Some(path) = &shared.state_path {
+                if let Err(e) = store::save(path, &merged) {
+                    return (
+                        500,
+                        json!({"error": format!("merged successfully but could not persist state to {path:?}: {e}")}),
+                    );
+                }
+            }
+            *state = merged;
+            drop(state);
+            let mut evidence = shared.evidence.lock().unwrap();
+            evidence.merges += 1;
+            evidence.conflicts_total += output.conflicts_resolved as u64;
+            evidence.last_reconcile_ms = Some(now_ms());
+            if let Some(conflict) = output.conflicts.last() {
+                let (winner, loser) = if conflict.kept_remote {
+                    (conflict.remote_writer, conflict.local_writer)
+                } else {
+                    (conflict.local_writer, conflict.remote_writer)
+                };
+                evidence.last_conflict = Some(
+                    json!({"key": conflict.key, "winnerWriter": winner, "loserWriter": loser}),
+                );
+            }
+            (200, serde_json::to_value(&output).unwrap())
+        }
+        Err(e) => error_response(&e),
+    }
+}
+
+fn peers_json(shared: &Shared, now: u64) -> serde_json::Value {
+    let peers = shared.gossip.lock().unwrap();
+    json!(peers
+        .iter()
+        .map(|p| json!({
+            "peer": p.address,
+            "rounds": p.rounds,
+            "lastOkAgeMs": p.last_ok_ms.map(|t| now.saturating_sub(t)),
+            "lastError": p.last_error,
+            "entriesPulled": p.entries_pulled,
+            "entriesPushed": p.entries_pushed,
+        }))
+        .collect::<Vec<_>>())
+}
+
+/// One round with every peer: pull their state and merge it, then (if asked) send ours. A peer that cannot be reached or whose state is
+/// refused is recorded and the round goes on with the next.
+fn gossip_round(shared: &Shared, config: &GossipConfig) {
+    let token = shared.shared_secret.as_deref();
+    for (index, peer) in config.peers.iter().enumerate() {
+        let outcome: Result<(u64, u64), String> = (|| {
+            let entries = gossip::pull(peer, token)?;
+            let pulled = entries.len() as u64;
+            if !entries.is_empty() {
+                let (status, body) = merge_request(shared, &entries);
+                if status != 200 {
+                    return Err(format!(
+                        "the state of {} was not merged: {}",
+                        peer.host_port,
+                        body["error"].as_str().unwrap_or("refused")
+                    ));
+                }
+            }
+            let mut pushed = 0;
+            if config.push {
+                let ours = state_entries(&shared.state.lock().unwrap());
+                if !ours.is_empty() {
+                    gossip::push(peer, token, &ours)?;
+                    pushed = ours.len() as u64;
+                }
+            }
+            Ok((pulled, pushed))
+        })();
+        let mut peers = shared.gossip.lock().unwrap();
+        let evidence = &mut peers[index];
+        evidence.rounds += 1;
+        match outcome {
+            Ok((pulled, pushed)) => {
+                evidence.last_ok_ms = Some(now_ms());
+                evidence.last_error = None;
+                evidence.entries_pulled += pulled;
+                evidence.entries_pushed += pushed;
+            }
+            Err(e) => {
+                eprintln!("[swarm-sync] gossip with {}: {e}", evidence.address);
+                evidence.last_error = Some(e);
+            }
+        }
+    }
+}
+
+fn gossip_loop(shared: &Shared, config: &GossipConfig) {
+    loop {
+        gossip_round(shared, config);
+        thread::sleep(config.interval);
+    }
+}
+
 /// What the caller did wrong is a 400 (nothing to merge) or a 422 (a write
 /// this node refuses); a collision or a clock at its limit is a conflict with
 /// the node's own state, a 409.
@@ -380,6 +607,8 @@ fn error_response(e: &ReconcileError) -> (u16, serde_json::Value) {
     let status = match e {
         ReconcileError::NoCells => 400,
         ReconcileError::StampTooFarAhead { .. } => 422,
+        ReconcileError::GenerationTooFarAhead { .. } => 422,
+        ReconcileError::InvalidEntry { .. } => 422,
         ReconcileError::ImpossibleConflict(_) => 400,
         ReconcileError::ClockOverflow => 409,
     };
@@ -953,5 +1182,237 @@ mod tests {
         assert_eq!(post(port, "/reconcile", scenario).0, 200);
         assert!(file.is_file());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- the exchange of full entries and the gossip client ----
+
+    fn start_node(shared_secret: Option<String>, extra: Extra) -> u16 {
+        let server = bind("127.0.0.1:0").expect("bind on an OS-assigned port must succeed");
+        let port = server
+            .server_addr()
+            .to_ip()
+            .expect("a real IP socket")
+            .port();
+        thread::spawn(move || {
+            run_with(
+                server,
+                LwwMap::new(),
+                None,
+                shared_secret,
+                crate::reconcile::DEFAULT_MAX_TIME_JUMP,
+                extra,
+            )
+        });
+        port
+    }
+
+    fn full_entries(port: u16) -> serde_json::Value {
+        let (status, body) = get(port, "/state?full=1");
+        assert_eq!(status, 200, "{body}");
+        serde_json::from_str::<serde_json::Value>(&body).unwrap()["entries"].clone()
+    }
+
+    #[test]
+    fn full_state_carries_stamps_and_tombstones_and_plain_state_still_does_not() {
+        let port = start_test_server();
+        let scenario = r#"{"cells":[{"id":"a","writer":7,"writes":[
+            {"key":"kept","value":"v","time":3},
+            {"key":"gone","value":"x","time":4},
+            {"key":"gone","deleted":true,"time":5}]}]}"#;
+        assert_eq!(post(port, "/reconcile", scenario).0, 200);
+        let entries = full_entries(port);
+        let by_key = |k: &str| {
+            entries
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["key"] == k)
+                .unwrap()
+                .clone()
+        };
+        assert_eq!(by_key("kept")["value"], "v");
+        assert_eq!(by_key("kept")["time"], 3);
+        assert_eq!(by_key("kept")["writer"], 7);
+        assert_eq!(by_key("kept")["generation"], 1);
+        assert!(
+            by_key("gone")["value"].is_null(),
+            "a deleted key is a tombstone, not an absent key"
+        );
+        assert_eq!(by_key("gone")["generation"], 2);
+        let (_, plain) = get(port, "/state");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&plain).unwrap(),
+            json!({"kept": "v"})
+        );
+    }
+
+    #[test]
+    fn a_write_can_delete_a_key_and_a_later_stale_add_does_not_bring_it_back() {
+        let port = start_test_server();
+        let first = r#"{"cells":[{"id":"a","writer":1,"writes":[{"key":"k","value":"v","time":2},{"key":"k","deleted":true,"time":6}]}]}"#;
+        assert_eq!(post(port, "/reconcile", first).0, 200);
+        let (_, state) = get(port, "/state");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&state).unwrap(),
+            json!({})
+        );
+        let stale =
+            r#"{"cells":[{"id":"b","writer":2,"writes":[{"key":"k","value":"old","time":4}]}]}"#;
+        assert_eq!(post(port, "/reconcile", stale).0, 200);
+        let (_, state) = get(port, "/state");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&state).unwrap(),
+            json!({})
+        );
+    }
+
+    #[test]
+    fn post_merge_takes_stamped_entries_and_refuses_what_a_peer_must_not_send() {
+        let port = start_test_server();
+        let ok = r#"{"entries":[{"key":"k","value":"v","time":5,"writer":2,"generation":1},{"key":"t","value":null,"time":6,"writer":2,"generation":2}]}"#;
+        let (status, body) = post(port, "/merge", ok);
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&body).unwrap()["entries_received"],
+            2
+        );
+        let (_, state) = get(port, "/state");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&state).unwrap(),
+            json!({"k": "v"})
+        );
+        // the same entries again are idempotent
+        let (status, body) = post(port, "/merge", ok);
+        assert_eq!(status, 200);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&body).unwrap()["conflicts_resolved"],
+            0
+        );
+        // a time or a generation too far ahead, an empty key, generation 0 and an empty list are refused
+        for bad in [
+            r#"{"entries":[{"key":"k","value":"v","time":99999999,"writer":2,"generation":1}]}"#,
+            r#"{"entries":[{"key":"k","value":"v","time":7,"writer":2,"generation":5000}]}"#,
+            r#"{"entries":[{"key":"","value":"v","time":7,"writer":2,"generation":1}]}"#,
+            r#"{"entries":[{"key":"k","value":"v","time":7,"writer":2,"generation":0}]}"#,
+            r#"{"entries":[]}"#,
+        ] {
+            let (status, body) = post(port, "/merge", bad);
+            assert!(status == 422 || status == 400, "{bad} -> {status} {body}");
+        }
+        assert_eq!(post(port, "/merge", "not json").0, 400);
+        // the same stamp claiming another value is the impossible collision
+        let clash =
+            r#"{"entries":[{"key":"k","value":"other","time":5,"writer":2,"generation":1}]}"#;
+        assert_eq!(post(port, "/merge", clash).0, 400);
+    }
+
+    #[test]
+    fn merge_and_full_state_need_the_shared_secret_when_there_is_one() {
+        let secret = "0123456789abcdef".to_string();
+        let port = start_node(Some(secret.clone()), Extra::default());
+        assert_eq!(get(port, "/state?full=1").0, 401);
+        assert_eq!(post(port, "/merge", r#"{"entries":[]}"#).0, 401);
+        assert_eq!(get_with_auth(port, "/state?full=1", Some(&secret)).0, 200);
+    }
+
+    fn wait_for(what: &str, mut condition: impl FnMut() -> bool) {
+        for _ in 0..100 {
+            if condition() {
+                return;
+            }
+            thread::sleep(std::time::Duration::from_millis(50));
+        }
+        panic!("timed out waiting for {what}");
+    }
+
+    fn gossip_to(peers: &[u16], push: bool) -> Extra {
+        Extra {
+            max_generation_jump: DEFAULT_MAX_GENERATION_JUMP,
+            gossip: Some(GossipConfig {
+                peers: peers
+                    .iter()
+                    .map(|p| gossip::parse_peer(&format!("http://127.0.0.1:{p}")).unwrap())
+                    .collect(),
+                interval: std::time::Duration::from_millis(50),
+                push,
+            }),
+        }
+    }
+
+    #[test]
+    fn a_node_that_asks_a_peer_gets_its_writes_and_its_deletions() {
+        let secret = "0123456789abcdef".to_string();
+        let a = start_node(Some(secret.clone()), Extra::default());
+        let scenario = r#"{"cells":[{"id":"a","writer":1,"writes":[
+            {"key":"one","value":"1","time":2},
+            {"key":"two","value":"2","time":3},
+            {"key":"two","deleted":true,"time":4}]}]}"#;
+        assert_eq!(
+            post_with_auth(a, "/reconcile", scenario, Some(&secret)).0,
+            200
+        );
+        let b = start_node(Some(secret.clone()), gossip_to(&[a], false));
+        wait_for("B to hold what A wrote", || {
+            let (status, body) = get_with_auth(b, "/state", Some(&secret));
+            status == 200
+                && serde_json::from_str::<serde_json::Value>(&body).unwrap() == json!({"one": "1"})
+        });
+        // the tombstone came over too: a stale add of "two" to B does not bring the key back
+        let stale =
+            r#"{"cells":[{"id":"b","writer":2,"writes":[{"key":"two","value":"old","time":3}]}]}"#;
+        assert_eq!(post_with_auth(b, "/reconcile", stale, Some(&secret)).0, 200);
+        let (_, body) = get_with_auth(b, "/state", Some(&secret));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&body).unwrap(),
+            json!({"one": "1"})
+        );
+        let (_, stats) = get(b, "/stats");
+        let stats: serde_json::Value = serde_json::from_str(&stats).unwrap();
+        assert!(
+            stats["peers"][0]["entriesPulled"].as_u64().unwrap() >= 2,
+            "{stats}"
+        );
+        assert!(stats["peers"][0]["lastError"].is_null());
+        assert!(stats["sync"]["merges"].as_u64().unwrap() >= 1);
+    }
+
+    #[test]
+    fn two_nodes_that_ask_each_other_converge_and_push_sends_ours_too() {
+        let a = start_node(None, Extra::default());
+        let b = start_node(None, gossip_to(&[a], true));
+        assert_eq!(post(a, "/reconcile", r#"{"cells":[{"id":"a","writer":1,"writes":[{"key":"from-a","value":"1","time":2}]}]}"#).0, 200);
+        assert_eq!(post(b, "/reconcile", r#"{"cells":[{"id":"b","writer":2,"writes":[{"key":"from-b","value":"2","time":3}]}]}"#).0, 200);
+        // B pulls A's state and pushes its own, so A ends up with both without asking
+        wait_for("A and B to hold both keys", || {
+            let state =
+                |p: u16| serde_json::from_str::<serde_json::Value>(&get(p, "/state").1).unwrap();
+            state(a) == json!({"from-a": "1", "from-b": "2"})
+                && state(b) == json!({"from-a": "1", "from-b": "2"})
+        });
+        assert_eq!(full_entries(a), full_entries(b));
+    }
+
+    #[test]
+    fn a_peer_that_is_down_or_wrong_is_recorded_and_does_not_stop_the_node() {
+        let dead = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.local_addr().unwrap().port()
+        };
+        let node = start_node(None, gossip_to(&[dead], false));
+        wait_for("the failure to be recorded", || {
+            let (_, stats) = get(node, "/stats");
+            let stats: serde_json::Value = serde_json::from_str(&stats).unwrap();
+            stats["peers"][0]["lastError"].is_string()
+        });
+        assert_eq!(get(node, "/health").0, 200);
+        assert_eq!(
+            post(
+                node,
+                "/reconcile",
+                r#"{"cells":[{"id":"a","writer":1,"writes":[{"key":"k","value":"v","time":1}]}]}"#
+            )
+            .0,
+            200
+        );
     }
 }

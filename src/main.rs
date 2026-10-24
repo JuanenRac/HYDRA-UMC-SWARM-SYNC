@@ -21,6 +21,8 @@
 // handed to it, not the deferred live gossip network itself.
 
 mod crdt;
+mod entries;
+mod gossip;
 mod lamport;
 mod reconcile;
 mod server;
@@ -76,6 +78,47 @@ fn run_serve(args: &[String]) -> ExitCode {
         },
         None => reconcile::DEFAULT_MAX_TIME_JUMP,
     };
+    let max_generation_jump = match find_flag(args, "--max-generation-jump") {
+        Some(raw) => match raw.parse::<u64>() {
+            Ok(n) if n >= 1 => n,
+            _ => {
+                eprintln!("[swarm-sync] fatal: --max-generation-jump must be a whole number of at least 1, got {raw:?}");
+                return ExitCode::from(2);
+            }
+        },
+        None => entries::DEFAULT_MAX_GENERATION_JUMP,
+    };
+    // the peers to ask for their state (--peer http://host:port, repeatable)
+    let mut peers = Vec::new();
+    for (i, arg) in args.iter().enumerate() {
+        if arg == "--peer" {
+            let Some(text) = args.get(i + 1) else {
+                eprintln!("[swarm-sync] fatal: --peer needs an address like http://10.0.0.7:8112");
+                return ExitCode::from(2);
+            };
+            match gossip::parse_peer(text) {
+                Ok(peer) => peers.push(peer),
+                Err(e) => {
+                    eprintln!("[swarm-sync] fatal: --peer: {e}");
+                    return ExitCode::from(2);
+                }
+            }
+        }
+    }
+    let gossip_interval_ms = match find_flag(args, "--gossip-interval-ms") {
+        Some(raw) => match raw.parse::<u64>() {
+            Ok(n) if n >= 1_000 => n,
+            _ => {
+                eprintln!("[swarm-sync] fatal: --gossip-interval-ms must be a whole number of at least 1000, got {raw:?}");
+                return ExitCode::from(2);
+            }
+        },
+        None => 10_000,
+    };
+    let gossip_push = args.iter().any(|a| a == "--gossip-push");
+    if !peers.is_empty() && shared_secret.is_none() {
+        eprintln!("[swarm-sync] warning: --peer without SWARM_SYNC_SHARED_SECRET: the state of this node is asked for and sent with no authentication");
+    }
     if let Some(problem) =
         server::startup_problem(&bind_addr, shared_secret.as_deref(), allow_anonymous)
     {
@@ -111,12 +154,32 @@ fn run_serve(args: &[String]) -> ExitCode {
                 Some(_) => eprintln!("[swarm-sync] SWARM_SYNC_SHARED_SECRET set: /reconcile and /state require a matching Authorization: Bearer <token>"),
                 None => eprintln!("[swarm-sync] SWARM_SYNC_SHARED_SECRET not set: /reconcile and /state have NO caller authentication (LAN-trust mode)"),
             }
-            server::run(
+            eprintln!("[swarm-sync] POST /merge and GET /state?full=1 exchange the full entries with a peer");
+            let gossip = if peers.is_empty() {
+                None
+            } else {
+                eprintln!(
+                    "[swarm-sync] asking {} peer(s) for their state every {} ms{}",
+                    peers.len(),
+                    gossip_interval_ms,
+                    if gossip_push { " and sending ours" } else { "" }
+                );
+                Some(server::GossipConfig {
+                    peers,
+                    interval: std::time::Duration::from_millis(gossip_interval_ms),
+                    push: gossip_push,
+                })
+            };
+            server::run_with(
                 bound,
                 initial_state,
                 state_path,
                 shared_secret,
                 max_time_jump,
+                server::Extra {
+                    max_generation_jump,
+                    gossip,
+                },
             );
             ExitCode::SUCCESS
         }
@@ -140,7 +203,7 @@ fn main() -> ExitCode {
     let Some(scenario_path) = args.get(1) else {
         eprintln!("Usage: hydra-umc-swarm-sync <scenario.json>");
         eprintln!(
-            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--allow-anonymous]"
+            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--allow-anonymous]"
         );
         eprintln!("See scenarios/example.json for the expected format.");
         return ExitCode::SUCCESS;

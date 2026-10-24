@@ -23,8 +23,14 @@ use crate::lamport::{LamportClock, LamportTime};
 #[derive(Deserialize)]
 pub struct Write {
     pub key: String,
+    /// Ignored when `deleted` is true.
+    #[serde(default)]
     pub value: String,
     pub time: u64,
+    /// The write deletes the key (a tombstone) instead of setting it. The writes of a cell are applied in order, so a set followed by a
+    /// delete of the same key is a key that was there and is gone.
+    #[serde(default)]
+    pub deleted: bool,
 }
 
 #[derive(Deserialize)]
@@ -40,6 +46,7 @@ pub struct Scenario {
     pub cells: Vec<Cell>,
 }
 
+#[derive(Debug)]
 pub enum ReconcileError {
     NoCells,
     /// a real, "impossible" identity collision surfaced by
@@ -60,6 +67,17 @@ pub enum ReconcileError {
         time: u64,
         limit: u64,
     },
+    /// an entry of a peer carries a generation further ahead than this node accepts for that key - see `entries::check_entries`
+    GenerationTooFarAhead {
+        key: String,
+        generation: u64,
+        limit: u64,
+    },
+    /// an entry that cannot be merged (empty or oversized key, value too long, generation 0, too many entries)
+    InvalidEntry {
+        key: String,
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for ReconcileError {
@@ -75,6 +93,11 @@ impl std::fmt::Display for ReconcileError {
                 f,
                 "write to {key:?} carries Lamport time {time}, past the {limit} this node accepts in one step: a time that far ahead could never be overwritten"
             ),
+            ReconcileError::GenerationTooFarAhead { key, generation, limit } => write!(
+                f,
+                "entry {key:?} carries generation {generation}, past the {limit} this node accepts for it: a generation that far ahead could never be overtaken"
+            ),
+            ReconcileError::InvalidEntry { key, reason } => write!(f, "entry {key:?} cannot be merged: {reason}"),
         }
     }
 }
@@ -101,6 +124,10 @@ fn build_cell_map(
 ) -> Result<LwwMap<String, String>, IdentityCollision<String, String>> {
     let mut map = LwwMap::new();
     for w in &cell.writes {
+        if w.deleted {
+            map.remove(w.key.clone(), LamportTime(w.time), cell.writer);
+            continue;
+        }
         map.set_checked(
             w.key.clone(),
             w.value.clone(),
@@ -230,6 +257,7 @@ mod tests {
                     key: k.to_string(),
                     value: v.to_string(),
                     time: *t,
+                    deleted: false,
                 })
                 .collect(),
         }
