@@ -2,6 +2,10 @@
 
 All notable changes to this project are documented here.
 
+## [Unreleased]
+
+- **The layout of the README is checked in the CI:** the validator runs `tools/universal_readme_check.py` and lists, as a warning, what differs from the universal layout of the README.
+
 ## [0.1.5] - The licence declared in the package metadata is GPL-3.0-or-later,
 
 - **Two nodes can now exchange their full state, and a node can follow its peers.** `GET /state?full=1` answers every entry with its time, writer and generation, tombstones included; `POST /merge` merges entries of that shape after checking them (size, a time within `--max-time-jump`, a generation within the new `--max-generation-jump` of the key's own, no generation 0); a `Write` of a scenario may carry `deleted: true`. `--peer URL` (repeatable), `--gossip-interval-ms` (at least 1000) and `--gossip-push` make the node ask its peers for their state, and optionally send its own, with the shared secret as bearer token; `GET /stats` reports each peer and the number of merges. A reported conflict now carries both generations, and the code documents that the generation is compared before the time. Tried between nodes on one machine, never across a real partition.
