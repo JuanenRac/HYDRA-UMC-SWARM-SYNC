@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1092" width="100%" role="img" aria-labelledby="t d">
+<title id="t">Repository structure of HYDRA-UMC-SWARM-SYNC</title>
+<desc id="d">The root of HYDRA-UMC-SWARM-SYNC and its main folders and files: src/, folders, project files.</desc>
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0A0C10"/><stop offset="0.5" stop-color="#0D1117"/><stop offset="1" stop-color="#05070A"/></linearGradient><linearGradient id="card" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#121821"/><stop offset="1" stop-color="#0B0F15"/></linearGradient><linearGradient id="line" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#00E5FF"/><stop offset="1" stop-color="#0088FF"/></linearGradient><filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#00E5FF" stroke-opacity="0.035"/><circle cx="40" cy="40" r="1" fill="#00E5FF" fill-opacity="0.09"/></pattern></defs>
+<rect width="1200" height="1092" rx="14" fill="url(#bg)"/><rect width="1200" height="1092" rx="14" fill="url(#grid)"/>
+<rect x="0.5" y="0.5" width="1199" height="1091" rx="14" fill="none" stroke="#1B2530"/>
+<text x="60" y="62" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.5" font-weight="600" fill="#0088FF" text-anchor="start" letter-spacing="4.5">REPOSITORY STRUCTURE</text>
+<text x="60" y="106" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="36" font-weight="700" fill="#FFFFFF" text-anchor="start" letter-spacing="0.5">HYDRA-UMC-SWARM-SYNC</text>
+<rect x="60" y="122" width="150" height="2.5" rx="1.25" fill="url(#line)"><animate attributeName="width" values="40;150;150" keyTimes="0;0.4;1" dur="3s" repeatCount="indefinite"/></rect>
+<text x="60" y="152" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="13.5" font-weight="400" fill="#8A97A6" text-anchor="start">Two levels: the folders, and the files that carry the logic.</text>
+<path id="c0" d="M300,624 C335,624 330,350 360,350" fill="none" stroke="#243140" stroke-width="2"/>
+<path d="M300,624 C335,624 330,350 360,350" fill="none" stroke="url(#line)" stroke-width="2" stroke-linecap="round" stroke-dasharray="6 9" opacity="0.9"><animate attributeName="stroke-dashoffset" from="0" to="-30" dur="1.6s" repeatCount="indefinite"/></path>
+<circle cx="360" cy="350" r="4.5" fill="#0D1117" stroke="#00E5FF" stroke-width="1.5"/>
+<path id="c1" d="M300,624 C335,624 330,643 360,643" fill="none" stroke="#243140" stroke-width="2"/>
+<path d="M300,624 C335,624 330,643 360,643" fill="none" stroke="url(#line)" stroke-width="2" stroke-linecap="round" stroke-dasharray="6 9" opacity="0.9"><animate attributeName="stroke-dashoffset" from="0" to="-30" dur="1.6s" repeatCount="indefinite"/></path>
+<circle cx="360" cy="643" r="4.5" fill="#0D1117" stroke="#00E5FF" stroke-width="1.5"/>
+<path id="c2" d="M300,624 C335,624 330,917 360,917" fill="none" stroke="#243140" stroke-width="2"/>
+<path d="M300,624 C335,624 330,917 360,917" fill="none" stroke="url(#line)" stroke-width="2" stroke-linecap="round" stroke-dasharray="6 9" opacity="0.9"><animate attributeName="stroke-dashoffset" from="0" to="-30" dur="1.6s" repeatCount="indefinite"/></path>
+<circle cx="360" cy="917" r="4.5" fill="#0D1117" stroke="#00E5FF" stroke-width="1.5"/>
+<circle r="3.5" fill="#00E5FF" filter="url(#glow)"><animateMotion dur="3.4s" repeatCount="indefinite"><mpath href="#c0"/></animateMotion></circle>
+<circle r="3.5" fill="#0088FF" filter="url(#glow)"><animateMotion dur="4.2s" repeatCount="indefinite"><mpath href="#c1"/></animateMotion></circle>
+<circle r="3.5" fill="#FF9900" filter="url(#glow)"><animateMotion dur="5.0s" repeatCount="indefinite"><mpath href="#c2"/></animateMotion></circle>
+<rect x="60" y="589" width="240" height="70" rx="12" fill="#0F1620" stroke="#2A3A4C" stroke-width="1.2"/>
+<rect x="60" y="589" width="240" height="70" rx="12" fill="none" stroke="#00E5FF" stroke-opacity="0.5" stroke-width="1.2" filter="url(#glow)"><animate attributeName="stroke-opacity" values="0.15;0.6;0.15" dur="3.6s" repeatCount="indefinite"/></rect>
+<text x="80" y="620" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="15.1" font-weight="700" fill="#FFFFFF" text-anchor="start">HYDRA-UMC-SWARM-SYNC/</text>
+<text x="80" y="642" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#7D8A99" text-anchor="start" letter-spacing="1">repository root</text>
+<circle cx="300" cy="624" r="5" fill="#00E5FF" filter="url(#glow)"/>
+<rect x="360" y="200" width="780" height="300" rx="10" fill="url(#card)" stroke="#1E2A36" stroke-width="1"/>
+<rect x="360" y="214" width="3" height="272" rx="1.5" fill="#00E5FF"><animate attributeName="opacity" values="0.55;1;0.55" dur="4s" begin="0s" repeatCount="indefinite"/></rect>
+<text x="382" y="234" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="19" font-weight="700" fill="#F2F6FA" text-anchor="start">src/</text>
+<text x="1122" y="234" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12" font-weight="400" fill="#7D8A99" text-anchor="end" letter-spacing="0.3">source code</text>
+<line x1="382" y1="248" x2="1122" y2="248" stroke="#00E5FF" stroke-opacity="0.35" stroke-width="1"/>
+<text x="392" y="280" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="14.5" font-weight="600" fill="#E6EDF3" text-anchor="start">main.rs</text>
+<text x="523.88" y="280" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.8" font-weight="400" fill="#8A97A6" text-anchor="start">CLI entry point</text>
+<line x1="392" y1="288" x2="1118" y2="288" stroke="#1A2430" stroke-width="1"/>
+<text x="392" y="307" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="14.5" font-weight="600" fill="#E6EDF3" text-anchor="start">lamport.rs</text>
+<text x="523.88" y="307" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.8" font-weight="400" fill="#8A97A6" text-anchor="start">LamportClock - the logical clock behind</text>
+<line x1="392" y1="315" x2="1118" y2="315" stroke="#1A2430" stroke-width="1"/>
+<text x="392" y="334" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="14.5" font-weight="600" fill="#E6EDF3" text-anchor="start">crdt.rs</text>
+<text x="523.88" y="334" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.8" font-weight="400" fill="#8A97A6" text-anchor="start">LwwMap - the real CRDT</text>
+<line x1="392" y1="342" x2="1118" y2="342" stroke="#1A2430" stroke-width="1"/>
+<text x="392" y="361" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="14.5" font-weight="600" fill="#E6EDF3" text-anchor="start">entries.rs</text>
+<text x="523.88" y="361" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.8" font-weight="400" fill="#8A97A6" text-anchor="start">Stamped entries</text>
+<line x1="392" y1="369" x2="1118" y2="369" stroke="#1A2430" stroke-width="1"/>
+<text x="392" y="388" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="14.5" font-weight="600" fill="#E6EDF3" text-anchor="start">gossip.rs</text>
+<text x="523.88" y="388" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.8" font-weight="400" fill="#8A97A6" text-anchor="start">Anti-entropy client</text>
+<line x1="392" y1="396" x2="1118" y2="396" stroke="#1A2430" stroke-width="1"/>
+<text x="392" y="415" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="14.5" font-weight="600" fill="#E6EDF3" text-anchor="start">reconcile.rs</text>
+<text x="523.88" y="415" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.8" font-weight="400" fill="#8A97A6" text-anchor="start">Real reconciliation</text>
+<line x1="392" y1="423" x2="1118" y2="423" stroke="#1A2430" stroke-width="1"/>
+<text x="392" y="442" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="14.5" font-weight="600" fill="#E6EDF3" text-anchor="start">server.rs</text>
+<text x="523.88" y="442" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.8" font-weight="400" fill="#8A97A6" text-anchor="start">Plain JSON/HTTP surface</text>
+<line x1="392" y1="450" x2="1118" y2="450" stroke="#1A2430" stroke-width="1"/>
+<text x="392" y="469" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="14.5" font-weight="600" fill="#E6EDF3" text-anchor="start">store.rs</text>
+<text x="523.88" y="469" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="12.8" font-weight="400" fill="#8A97A6" text-anchor="start">Real opt-in per-node persistence</text>
+<line x1="392" y1="477" x2="1118" y2="477" stroke="#1A2430" stroke-width="1"/>
+<rect x="360" y="530" width="780" height="226" rx="10" fill="url(#card)" stroke="#1E2A36" stroke-width="1"/>
+<rect x="360" y="544" width="3" height="198" rx="1.5" fill="#0088FF"><animate attributeName="opacity" values="0.55;1;0.55" dur="4s" begin="0.6s" repeatCount="indefinite"/></rect>
+<text x="382" y="564" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="17" font-weight="700" fill="#F2F6FA" text-anchor="start">folders</text>
+<line x1="382" y1="578" x2="1122" y2="578" stroke="#0088FF" stroke-opacity="0.35" stroke-width="1"/>
+<text x="392" y="606" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">scenarios/</text>
+<text x="392" y="622" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">example scenarios</text>
+<text x="392" y="642" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">tests/</text>
+<text x="392" y="658" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">startup.rs: the binary refuses to start</text>
+<text x="392" y="678" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">docs/</text>
+<text x="392" y="694" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">documents of the project</text>
+<text x="392" y="714" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">images/</text>
+<text x="392" y="730" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">banner and the pictures of the README</text>
+<text x="755" y="606" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">systemd/</text>
+<text x="755" y="622" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">service unit</text>
+<text x="755" y="642" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">tools/</text>
+<text x="755" y="658" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">project tools and CI checks</text>
+<text x="755" y="678" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">.github/</text>
+<text x="755" y="694" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">CI workflow and issue templates</text>
+<rect x="360" y="786" width="780" height="262" rx="10" fill="url(#card)" stroke="#1E2A36" stroke-width="1"/>
+<rect x="360" y="800" width="3" height="234" rx="1.5" fill="#FF9900"><animate attributeName="opacity" values="0.55;1;0.55" dur="4s" begin="1.2s" repeatCount="indefinite"/></rect>
+<text x="382" y="820" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="17" font-weight="700" fill="#F2F6FA" text-anchor="start">project files</text>
+<line x1="382" y1="834" x2="1122" y2="834" stroke="#FF9900" stroke-opacity="0.35" stroke-width="1"/>
+<text x="392" y="862" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">Cargo.toml</text>
+<text x="392" y="878" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">Rust package manifest (name, version, deps)</text>
+<text x="392" y="898" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">bump_version.py</text>
+<text x="392" y="914" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">explicit version bump</text>
+<text x="392" y="934" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">bump_manifest_version.py</text>
+<text x="392" y="950" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">Syncs hydra-umc.project.json's version</text>
+<text x="392" y="970" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">CHANGELOG.md</text>
+<text x="392" y="986" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">what changed in each version</text>
+<text x="392" y="1006" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">build-test.sh</text>
+<text x="392" y="1022" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">non-mutating build check</text>
+<text x="755" y="862" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">build.sh</text>
+<text x="755" y="878" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">builds and checks; never changes the version</text>
+<text x="755" y="898" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">hydra-umc.project.json</text>
+<text x="755" y="914" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">manifest: version, maturity, family</text>
+<text x="755" y="934" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">run.sh</text>
+<text x="755" y="950" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">starts the program</text>
+<text x="755" y="970" font-family="'JetBrains Mono','Cascadia Code','SFMono-Regular',Consolas,'Liberation Mono',monospace" font-size="13.5" font-weight="600" fill="#E6EDF3" text-anchor="start">test.sh</text>
+<text x="755" y="986" font-family="'Segoe UI','Noto Sans','Noto Sans CJK SC','Microsoft YaHei','Yu Gothic','Helvetica Neue',Helvetica,Arial,sans-serif" font-size="11.8" font-weight="400" fill="#7D8A99" text-anchor="start">runs the tests</text>
+</svg>

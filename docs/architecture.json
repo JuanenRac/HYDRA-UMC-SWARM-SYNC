@@ -1,0 +1,155 @@
+{
+  "repo": "HYDRA-UMC-SWARM-SYNC",
+  "ecosystem": "hydra",
+  "tagline": "A convergent map: the same writes in any order give the same state, and every conflict is reported.",
+  "description": "HYDRA-UMC-SWARM-SYNC merges the writes of every cell into a last-writer-wins map with a Lamport clock, reports each resolved conflict, keeps its state in a file written atomically, and can pull from and push to peers.",
+  "columns": [
+    "WHO CALLS IT",
+    "THIS REPOSITORY",
+    "WHERE THE STATE LIVES"
+  ],
+  "nodes": [
+    {
+      "id": "cli",
+      "column": 0,
+      "level": "tested",
+      "title": "Scenario file",
+      "lines": [
+        "bare command: merge the",
+        "cells of a JSON scenario"
+      ],
+      "code": [
+        "src/main.rs"
+      ]
+    },
+    {
+      "id": "http",
+      "column": 0,
+      "level": "tested",
+      "title": "HTTP node",
+      "lines": [
+        "serve on port 8112:",
+        "/reconcile, /state, /stats"
+      ],
+      "code": [
+        "src/server.rs"
+      ]
+    },
+    {
+      "id": "sto",
+      "column": 2,
+      "level": "tested",
+      "title": "State file",
+      "lines": [
+        "written to a temp file,",
+        "synced, then renamed"
+      ],
+      "code": [
+        "src/store.rs"
+      ]
+    },
+    {
+      "id": "peer",
+      "column": 2,
+      "level": "untested",
+      "title": "Peer nodes",
+      "lines": [
+        "nodes of other cells;",
+        "not run on other machines"
+      ]
+    },
+    {
+      "id": "rec",
+      "column": 1,
+      "level": "tested",
+      "title": "reconcile.rs",
+      "lines": [
+        "merges the cells and",
+        "lists every conflict"
+      ],
+      "code": [
+        "src/reconcile.rs"
+      ]
+    },
+    {
+      "id": "crd",
+      "column": 1,
+      "level": "tested",
+      "title": "crdt.rs + lamport.rs",
+      "lines": [
+        "last-writer-wins map and",
+        "the logical clock"
+      ],
+      "code": [
+        "src/crdt.rs",
+        "src/lamport.rs"
+      ]
+    },
+    {
+      "id": "ent",
+      "column": 1,
+      "level": "tested",
+      "title": "entries.rs",
+      "lines": [
+        "limits how far ahead a",
+        "time or generation may be"
+      ],
+      "code": [
+        "src/entries.rs"
+      ]
+    },
+    {
+      "id": "gos",
+      "column": 1,
+      "level": "tested",
+      "title": "gossip.rs",
+      "lines": [
+        "pulls from peers, and",
+        "pushes if asked"
+      ],
+      "code": [
+        "src/gossip.rs"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "cli",
+      "to": "rec",
+      "level": "tested"
+    },
+    {
+      "from": "http",
+      "to": "rec",
+      "level": "tested"
+    },
+    {
+      "from": "rec",
+      "to": "crd",
+      "level": "tested"
+    },
+    {
+      "from": "ent",
+      "to": "rec",
+      "level": "tested"
+    },
+    {
+      "from": "gos",
+      "to": "ent",
+      "level": "tested"
+    },
+    {
+      "from": "rec",
+      "to": "sto",
+      "level": "tested",
+      "label": "state"
+    },
+    {
+      "from": "gos",
+      "to": "peer",
+      "level": "untested",
+      "label": "HTTP"
+    }
+  ],
+  "footer": "Tried on one computer with scenario files and local HTTP nodes; no hardware clock and no separate machines."
+}

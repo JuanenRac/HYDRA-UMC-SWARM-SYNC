@@ -1,0 +1,565 @@
+{
+  "repo": "HYDRA-UMC-SWARM-SYNC",
+  "ecosystem": "hydra",
+  "svg": "en",
+  "exempt": [
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "SUPPORT.md",
+    "LICENSE",
+    "LICENSE.md",
+    "Cargo.lock",
+    "build-test.bat",
+    "build.bat",
+    "run.bat",
+    "test.bat"
+  ],
+  "cards": [
+    {
+      "name": "src/",
+      "span": 3,
+      "accent": "a",
+      "rows": [
+        {
+          "name": "main.rs",
+          "desc": {
+            "en": "CLI entry point",
+            "es": "Punto de entrada CLI",
+            "de": "CLI-Einstiegspunkt",
+            "fr": "Point d'entrée CLI",
+            "it": "Punto di ingresso CLI",
+            "ja": "CLI エントリポイント：シナリオを読み込み",
+            "zh": "CLI 入口点：加载场景、协调、打印 JSO",
+            "pt": "Ponto de entrada da CLI"
+          },
+          "tree_desc": {
+            "en": "CLI entry point: loads a scenario, reconciles, prints JSON",
+            "es": "Punto de entrada CLI: carga un escenario, reconcilia, imprime JSON",
+            "de": "CLI-Einstiegspunkt: lädt ein Szenario, gleicht ab, gibt JSON aus",
+            "fr": "Point d'entrée CLI : charge un scénario, réconcilie, imprime le JSON",
+            "it": "Punto di ingresso CLI: carica uno scenario, riconcilia, stampa JSON",
+            "ja": "CLI エントリポイント：シナリオを読み込み、調整し、JSON を出力",
+            "zh": "CLI 入口点：加载场景、协调、打印 JSON",
+            "pt": "Ponto de entrada da CLI: carrega um cenário, reconcilia, imprime JSON"
+          }
+        },
+        {
+          "name": "lamport.rs",
+          "desc": {
+            "en": "LamportClock - the logical clock behind",
+            "es": "LamportClock - el reloj lógico detrás del",
+            "de": "LamportClock - die Logikuhr hinter der",
+            "fr": "LamportClock - l'horloge logique derrière",
+            "it": "LamportClock - l'orologio logico dietro",
+            "ja": "LamportClock - CRDT の順",
+            "zh": "LamportClock——CRDT 排序背",
+            "pt": "LamportClock - o relógio lógico por trás da"
+          },
+          "tree_desc": {
+            "en": "LamportClock - the logical clock behind the CRDT's ordering",
+            "es": "LamportClock - el reloj lógico detrás del orden del CRDT",
+            "de": "LamportClock - die Logikuhr hinter der Ordnung des CRDT",
+            "fr": "LamportClock - l'horloge logique derrière l'ordre du CRDT",
+            "it": "LamportClock - l'orologio logico dietro l'ordine del CRDT",
+            "ja": "LamportClock - CRDT の順序付けを支える論理クロック",
+            "zh": "LamportClock——CRDT 排序背后的逻辑时钟",
+            "pt": "LamportClock - o relógio lógico por trás da ordenação do CRDT"
+          }
+        },
+        {
+          "name": "crdt.rs",
+          "desc": {
+            "en": "LwwMap - the real CRDT",
+            "es": "LwwMap - el CRDT real",
+            "de": "LwwMap - der echte CRDT",
+            "fr": "LwwMap - le véritable CRDT",
+            "it": "LwwMap - il vero CRDT",
+            "ja": "LwwMap - 本物の CRDT",
+            "zh": "LwwMap——真正的 CRDT",
+            "pt": "LwwMap - o CRDT real: set/get/merge/snapshot"
+          },
+          "tree_desc": {
+            "en": "LwwMap - the real CRDT: set/get/merge/snapshot",
+            "es": "LwwMap - el CRDT real: set/get/merge/snapshot",
+            "de": "LwwMap - der echte CRDT: set/get/merge/snapshot",
+            "fr": "LwwMap - le véritable CRDT : set/get/merge/snapshot",
+            "it": "LwwMap - il vero CRDT: set/get/merge/snapshot",
+            "ja": "LwwMap - 本物の CRDT：set/get/merge/snapshot",
+            "zh": "LwwMap——真正的 CRDT：set/get/merge/snapshot",
+            "pt": "LwwMap - o CRDT real: set/get/merge/snapshot"
+          }
+        },
+        {
+          "name": "entries.rs",
+          "desc": {
+            "en": "Stamped entries",
+            "es": "Stamped entries",
+            "de": "Stamped entries",
+            "fr": "Stamped entries",
+            "it": "Stamped entries",
+            "ja": "Stamped entries",
+            "zh": "Stamped entries",
+            "pt": "Stamped entries"
+          },
+          "tree_desc": {
+            "en": "Stamped entries: GET /state?full=1, POST /merge and their checks",
+            "es": "Stamped entries: GET /state?full=1, POST /merge and their checks",
+            "de": "Stamped entries: GET /state?full=1, POST /merge and their checks",
+            "fr": "Stamped entries: GET /state?full=1, POST /merge and their checks",
+            "it": "Stamped entries: GET /state?full=1, POST /merge and their checks",
+            "ja": "Stamped entries: GET /state?full=1, POST /merge and their checks",
+            "zh": "Stamped entries: GET /state?full=1, POST /merge and their checks",
+            "pt": "Stamped entries: GET /state?full=1, POST /merge and their checks"
+          }
+        },
+        {
+          "name": "gossip.rs",
+          "desc": {
+            "en": "Anti-entropy client",
+            "es": "Anti-entropy client",
+            "de": "Anti-entropy client",
+            "fr": "Anti-entropy client",
+            "it": "Anti-entropy client",
+            "ja": "Anti-entropy client",
+            "zh": "Anti-entropy client",
+            "pt": "Anti-entropy client"
+          },
+          "tree_desc": {
+            "en": "Anti-entropy client: asks the peers for their state",
+            "es": "Anti-entropy client: asks the peers for their state",
+            "de": "Anti-entropy client: asks the peers for their state",
+            "fr": "Anti-entropy client: asks the peers for their state",
+            "it": "Anti-entropy client: asks the peers for their state",
+            "ja": "Anti-entropy client: asks the peers for their state",
+            "zh": "Anti-entropy client: asks the peers for their state",
+            "pt": "Anti-entropy client: asks the peers for their state"
+          }
+        },
+        {
+          "name": "reconcile.rs",
+          "desc": {
+            "en": "Real reconciliation",
+            "es": "Reconciliación real",
+            "de": "Echter Abgleich",
+            "fr": "Réconciliation réelle",
+            "it": "Riconciliazione reale",
+            "ja": "実際の調整ロジック。server.rs から",
+            "zh": "真实的协调逻辑,拆分出来以便 server.",
+            "pt": "Reconciliação real"
+          },
+          "tree_desc": {
+            "en": "Real reconciliation, split out so server.rs can reach it too",
+            "es": "Reconciliación real, separada para que server.rs también pueda usarla",
+            "de": "Echter Abgleich, ausgelagert damit server.rs ihn auch nutzen kann",
+            "fr": "Réconciliation réelle, extraite pour que server.rs puisse aussi l'utiliser",
+            "it": "Riconciliazione reale, separata così server.rs può usarla anch'esso",
+            "ja": "実際の調整ロジック。server.rs からも使えるよう分離",
+            "zh": "真实的协调逻辑,拆分出来以便 server.rs 也能使用",
+            "pt": "Reconciliação real, separada para que o server.rs também lhe aceda"
+          }
+        },
+        {
+          "name": "server.rs",
+          "desc": {
+            "en": "Plain JSON/HTTP surface",
+            "es": "Superficie JSON/HTTP plana",
+            "de": "Einfache JSON/HTTP-Oberfläche",
+            "fr": "Surface JSON/HTTP simple",
+            "it": "Superficie JSON/HTTP semplice",
+            "ja": "シンプルなJSON/HTTPサーフェス(ti",
+            "zh": "简洁的 JSON/HTTP 接口(tiny_",
+            "pt": "Superfície JSON/HTTP simples"
+          },
+          "tree_desc": {
+            "en": "Plain JSON/HTTP surface (tiny_http) - POST /reconcile over the network",
+            "es": "Superficie JSON/HTTP plana (tiny_http) - POST /reconcile por red",
+            "de": "Einfache JSON/HTTP-Oberfläche (tiny_http) - POST /reconcile übers Netz",
+            "fr": "Surface JSON/HTTP simple (tiny_http) - POST /reconcile sur le réseau",
+            "it": "Superficie JSON/HTTP semplice (tiny_http) - POST /reconcile in rete",
+            "ja": "シンプルなJSON/HTTPサーフェス(tiny_http) - ネットワーク経由のPOST /reconcile",
+            "zh": "简洁的 JSON/HTTP 接口(tiny_http) - 通过网络的 POST /reconcile",
+            "pt": "Superfície JSON/HTTP simples (tiny_http) - POST /reconcile pela rede"
+          }
+        },
+        {
+          "name": "store.rs",
+          "desc": {
+            "en": "Real opt-in per-node persistence",
+            "es": "Persistencia real y opcional por nodo",
+            "de": "Echte optionale Persistenz pro Knoten",
+            "fr": "Persistance réelle et optionnelle par nœud",
+            "it": "Persistenza reale e opzionale per nodo",
+            "ja": "実際の任意のノードごとの永続化(--stat",
+            "zh": "真实的、可选的按节点持久化(--state",
+            "pt": "Persistência real opcional por nó"
+          },
+          "tree_desc": {
+            "en": "Real opt-in per-node persistence (--state-file): a crash-safe JSON state file",
+            "es": "Persistencia real y opcional por nodo (--state-file): un fichero de estado JSON a prueba de fallos",
+            "de": "Echte optionale Persistenz pro Knoten (--state-file): eine absturzsichere JSON-Zustandsdatei",
+            "fr": "Persistance réelle et optionnelle par nœud (--state-file) : un fichier d'état JSON résistant aux pannes",
+            "it": "Persistenza reale e opzionale per nodo (--state-file): un file di stato JSON a prova di crash",
+            "ja": "実際の任意のノードごとの永続化(--state-file):クラッシュ耐性のあるJSON状態ファイル",
+            "zh": "真实的、可选的按节点持久化(--state-file):抗崩溃的 JSON 状态文件",
+            "pt": "Persistência real opcional por nó (--state-file): um ficheiro de estado JSON à prova de falhas"
+          }
+        }
+      ],
+      "tree_head": {
+        "en": "source code",
+        "es": "código fuente",
+        "de": "Quellcode",
+        "fr": "code source",
+        "it": "codice sorgente",
+        "ja": "ソースコード",
+        "zh": "源代码",
+        "pt": "código-fonte"
+      },
+      "sub": {
+        "en": "source code",
+        "es": "código fuente",
+        "de": "Quellcode",
+        "fr": "code source",
+        "it": "codice sorgente",
+        "ja": "ソースコード",
+        "zh": "源代码",
+        "pt": "código-fonte"
+      }
+    },
+    {
+      "name": {
+        "en": "folders",
+        "es": "carpetas",
+        "de": "Ordner",
+        "fr": "dossiers",
+        "it": "cartelle",
+        "ja": "フォルダ",
+        "zh": "文件夹",
+        "pt": "pastas"
+      },
+      "kind": "group",
+      "span": 3,
+      "accent": "b",
+      "columns": 2,
+      "rows": [
+        {
+          "name": "scenarios/",
+          "desc": {
+            "en": "example scenarios",
+            "es": "escenarios de ejemplo",
+            "de": "Beispielszenarien",
+            "fr": "scénarios d'exemple",
+            "it": "scenari di esempio",
+            "ja": "シナリオの例",
+            "zh": "示例场景",
+            "pt": "cenários de exemplo"
+          },
+          "tree_desc": {
+            "en": "example scenarios",
+            "es": "escenarios de ejemplo",
+            "de": "Beispielszenarien",
+            "fr": "scénarios d'exemple",
+            "it": "scenari di esempio",
+            "ja": "シナリオの例",
+            "zh": "示例场景",
+            "pt": "cenários de exemplo"
+          }
+        },
+        {
+          "name": "tests/",
+          "desc": {
+            "en": "startup.rs: the binary refuses to start",
+            "es": "startup.rs: el binario se niega a arrancar",
+            "de": "startup.rs: das Programm verweigert den",
+            "fr": "startup.rs : le binaire refuse de démarrer",
+            "it": "startup.rs: il binario rifiuta di avviarsi",
+            "ja": "startup.rs: 状態ファイルが読めな",
+            "zh": "startup.rs: 状态文件不可读",
+            "pt": "startup.rs: o binário recusa arrancar com"
+          },
+          "tree_desc": {
+            "en": "startup.rs: the binary refuses to start on an unreadable state file, a bad max time jump or unusable gossip settings",
+            "es": "startup.rs: el binario se niega a arrancar con un fichero de estado ilegible, un salto máximo de tiempo erróneo o ajustes de gossip inservibles",
+            "de": "startup.rs: das Programm verweigert den Start bei unlesbarer Zustandsdatei, ungültigem maximalem Zeitsprung oder unbrauchbaren Gossip-Einstellungen",
+            "fr": "startup.rs : le binaire refuse de démarrer avec un fichier d'état illisible, un saut de temps maximal erroné ou des réglages de gossip inutilisables",
+            "it": "startup.rs: il binario rifiuta di avviarsi con un file di stato illeggibile, un salto di tempo massimo errato o impostazioni gossip inutilizzabili",
+            "ja": "startup.rs: 状態ファイルが読めない、最大時間ジャンプが不正、gossip 設定が使えない場合に起動を拒否する",
+            "zh": "startup.rs: 状态文件不可读、最大时间跳变无效或 gossip 设置不可用时,程序拒绝启动",
+            "pt": "startup.rs: o binário recusa arrancar com um ficheiro de estado ilegível, um salto máximo de tempo errado ou definições de gossip inutilizáveis"
+          }
+        },
+        {
+          "name": "docs/",
+          "desc": {
+            "en": "documents of the project",
+            "es": "documentos del proyecto",
+            "de": "Dokumente des Projekts",
+            "fr": "documents du projet",
+            "it": "documenti del progetto",
+            "ja": "プロジェクトの文書",
+            "zh": "项目文档",
+            "pt": "documentos do projeto"
+          },
+          "tree_desc": {
+            "en": "documents of the project",
+            "es": "documentos del proyecto",
+            "de": "Dokumente des Projekts",
+            "fr": "documents du projet",
+            "it": "documenti del progetto",
+            "ja": "プロジェクトの文書",
+            "zh": "项目文档",
+            "pt": "documentos do projeto"
+          }
+        },
+        {
+          "name": "images/",
+          "desc": {
+            "en": "banner and the pictures of the README",
+            "es": "banner e imágenes del README",
+            "de": "Banner und Bilder der README",
+            "fr": "bannière et images du README",
+            "it": "banner e immagini del README",
+            "ja": "バナーと README の図",
+            "zh": "横幅和 README 的图片",
+            "pt": "faixa e imagens do README"
+          },
+          "tree_desc": {
+            "en": "banner and the pictures of the README",
+            "es": "banner e imágenes del README",
+            "de": "Banner und Bilder der README",
+            "fr": "bannière et images du README",
+            "it": "banner e immagini del README",
+            "ja": "バナーと README の図",
+            "zh": "横幅和 README 的图片",
+            "pt": "faixa e imagens do README"
+          }
+        },
+        {
+          "name": "systemd/",
+          "desc": {
+            "en": "service unit",
+            "es": "unidad de servicio",
+            "de": "Dienst-Unit",
+            "fr": "unité de service",
+            "it": "unità di servizio",
+            "ja": "サービスユニット",
+            "zh": "服务单元",
+            "pt": "unidade de serviço"
+          },
+          "tree_desc": {
+            "en": "service unit",
+            "es": "unidad de servicio",
+            "de": "Dienst-Unit",
+            "fr": "unité de service",
+            "it": "unità di servizio",
+            "ja": "サービスユニット",
+            "zh": "服务单元",
+            "pt": "unidade de serviço"
+          }
+        },
+        {
+          "name": "tools/",
+          "desc": {
+            "en": "project tools and CI checks",
+            "es": "herramientas del proyecto y comprobaciones",
+            "de": "Projektwerkzeuge und CI-Prüfungen",
+            "fr": "outils du projet et vérifications de la CI",
+            "it": "strumenti del progetto e controlli della CI",
+            "ja": "プロジェクトのツールと CI の検査",
+            "zh": "项目工具和 CI 检查",
+            "pt": "ferramentas do projeto e verificações da CI"
+          },
+          "tree_desc": {
+            "en": "project tools and CI checks",
+            "es": "herramientas del proyecto y comprobaciones del CI",
+            "de": "Projektwerkzeuge und CI-Prüfungen",
+            "fr": "outils du projet et vérifications de la CI",
+            "it": "strumenti del progetto e controlli della CI",
+            "ja": "プロジェクトのツールと CI の検査",
+            "zh": "项目工具和 CI 检查",
+            "pt": "ferramentas do projeto e verificações da CI"
+          }
+        },
+        {
+          "name": ".github/",
+          "desc": {
+            "en": "CI workflow and issue templates",
+            "es": "flujo de CI y plantillas de incidencias",
+            "de": "CI-Workflow und Issue-Vorlagen",
+            "fr": "workflow de CI et modèles de tickets",
+            "it": "workflow di CI e modelli di segnalazione",
+            "ja": "CI ワークフローと Issue テンプレート",
+            "zh": "CI 工作流和 Issue 模板",
+            "pt": "fluxo de CI e modelos de problemas"
+          }
+        }
+      ]
+    },
+    {
+      "name": {
+        "en": "project files",
+        "es": "ficheros del proyecto",
+        "de": "Projektdateien",
+        "fr": "fichiers du projet",
+        "it": "file del progetto",
+        "ja": "プロジェクトのファイル",
+        "zh": "项目文件",
+        "pt": "ficheiros do projeto"
+      },
+      "kind": "group",
+      "span": 3,
+      "accent": "c",
+      "columns": 2,
+      "rows": [
+        {
+          "name": "Cargo.toml",
+          "desc": {
+            "en": "Rust package manifest (name, version, deps)",
+            "es": "Manifiesto del paquete Rust",
+            "de": "Rust-Paketmanifest",
+            "fr": "Manifeste du paquet Rust",
+            "it": "Manifesto del pacchetto Rust",
+            "ja": "Rust パッケージマニフェスト（名前",
+            "zh": "Rust 包清单（名称、版本、依赖项）",
+            "pt": "Manifesto do pacote Rust"
+          },
+          "tree_desc": {
+            "en": "Rust package manifest (name, version, deps)",
+            "es": "Manifiesto del paquete Rust (nombre, versión, deps)",
+            "de": "Rust-Paketmanifest (Name, Version, Abhängigkeiten)",
+            "fr": "Manifeste du paquet Rust (nom, version, dépendances)",
+            "it": "Manifesto del pacchetto Rust (nome, versione, dep)",
+            "ja": "Rust パッケージマニフェスト（名前、バージョン、依存関係）",
+            "zh": "Rust 包清单（名称、版本、依赖项）",
+            "pt": "Manifesto do pacote Rust (nome, versão, dependências)"
+          }
+        },
+        {
+          "name": "bump_version.py",
+          "desc": {
+            "en": "explicit version bump",
+            "es": "Incremento de versión tipo cuentakilómetros",
+            "de": "ausdrückliche Versionserhöhung",
+            "fr": "Incrément de version type compteur",
+            "it": "Incremento di versione stile contachilometri",
+            "ja": "明示的なバージョン更新",
+            "zh": "显式提升版本",
+            "pt": "Subida de versão ao estilo conta-quilómetros"
+          },
+          "tree_desc": {
+            "en": "explicit version bump",
+            "es": "Incremento de versión tipo cuentakilómetros (solo lo ejecuta el comando `bump` explícito)",
+            "de": "ausdrückliche Versionserhöhung",
+            "fr": "Incrément de version type compteur kilométrique (exécuté seulement par la commande `bump` explicite)",
+            "it": "Incremento di versione stile contachilometri (eseguito solo dal comando `bump` esplicito)",
+            "ja": "明示的なバージョン更新",
+            "zh": "显式提升版本",
+            "pt": "Subida de versão ao estilo conta-quilómetros (executada só pelo comando `bump` explícito)"
+          }
+        },
+        {
+          "name": "bump_manifest_version.py",
+          "desc": {
+            "en": "Syncs hydra-umc.project.json's version",
+            "es": "Sincroniza la versión de",
+            "de": "Synchronisiert die Version von",
+            "fr": "Synchronise la version de",
+            "it": "Sincronizza la versione di",
+            "ja": "hydra-umc.project.json",
+            "zh": "将 hydra-umc.project.js",
+            "pt": "Sincroniza a versão do"
+          },
+          "tree_desc": {
+            "en": "Syncs hydra-umc.project.json's version to the native one (--sync)",
+            "es": "Sincroniza la versión de hydra-umc.project.json con la nativa (--sync)",
+            "de": "Synchronisiert die Version von hydra-umc.project.json mit der nativen (--sync)",
+            "fr": "Synchronise la version de hydra-umc.project.json avec la version native (--sync)",
+            "it": "Sincronizza la versione di hydra-umc.project.json con quella nativa (--sync)",
+            "ja": "hydra-umc.project.json のバージョンをネイティブ版と同期(--sync)",
+            "zh": "将 hydra-umc.project.json 的版本与原生版本同步(--sync)",
+            "pt": "Sincroniza a versão do hydra-umc.project.json com a nativa (--sync)"
+          }
+        },
+        {
+          "name": "CHANGELOG.md",
+          "desc": {
+            "en": "what changed in each version",
+            "es": "qué cambió en cada versión",
+            "de": "was sich in jeder Version geändert hat",
+            "fr": "ce qui a changé à chaque version",
+            "it": "cosa è cambiato in ogni versione",
+            "ja": "各バージョンの変更点",
+            "zh": "每个版本的变更",
+            "pt": "o que mudou em cada versão"
+          }
+        },
+        {
+          "name": "build-test.sh",
+          "desc": {
+            "en": "non-mutating build check",
+            "es": "comprobación de compilación sin cambios",
+            "de": "Build-Prüfung ohne Änderungen",
+            "fr": "vérification de build sans modification",
+            "it": "controllo di build senza modifiche",
+            "ja": "変更を伴わないビルド確認",
+            "zh": "不修改内容的构建检查",
+            "pt": "verificação de compilação sem alterações"
+          }
+        },
+        {
+          "name": "build.sh",
+          "desc": {
+            "en": "builds and checks; never changes the version",
+            "es": "compila y comprueba; nunca cambia la versión",
+            "de": "baut und prüft; ändert nie die Version",
+            "fr": "construit et vérifie ; ne change jamais la version",
+            "it": "compila e controlla; non cambia mai la versione",
+            "ja": "ビルドと検査。バージョンは変更しない",
+            "zh": "构建并检查；从不改变版本",
+            "pt": "compila e verifica; nunca muda a versão"
+          }
+        },
+        {
+          "name": "hydra-umc.project.json",
+          "desc": {
+            "en": "manifest: version, maturity, family",
+            "es": "manifiesto: versión, madurez, familia",
+            "de": "Manifest: Version, Reifegrad, Familie",
+            "fr": "manifeste : version, maturité, famille",
+            "it": "manifesto: versione, maturità, famiglia",
+            "ja": "マニフェスト：バージョン、成熟度、ファミリー",
+            "zh": "清单：版本、成熟度、系列",
+            "pt": "manifesto: versão, maturidade, família"
+          }
+        },
+        {
+          "name": "run.sh",
+          "desc": {
+            "en": "starts the program",
+            "es": "arranca el programa",
+            "de": "startet das Programm",
+            "fr": "démarre le programme",
+            "it": "avvia il programma",
+            "ja": "プログラムを起動",
+            "zh": "启动程序",
+            "pt": "arranca o programa"
+          }
+        },
+        {
+          "name": "test.sh",
+          "desc": {
+            "en": "runs the tests",
+            "es": "ejecuta las pruebas",
+            "de": "führt die Tests aus",
+            "fr": "lance les tests",
+            "it": "esegue i test",
+            "ja": "テストを実行",
+            "zh": "运行测试",
+            "pt": "executa os testes"
+          }
+        }
+      ]
+    }
+  ]
+}

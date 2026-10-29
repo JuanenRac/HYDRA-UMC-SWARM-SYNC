@@ -1,23 +1,32 @@
+<!-- =============================================================================
+HYDRA-UMC-SWARM-SYNC - CRDT state reconciliation for the swarm
+Copyright (C) JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
+GPL-3.0-or-later - see LICENSE
+============================================================================= -->
+
 <p align="center">
   <img src="images/HYDRA_UMC_BANNER.svg" alt="HYDRA-UMC-SWARM-SYNC banner" width="100%">
 </p>
 
-# ⏱️ HYDRA-UMC-SWARM-SYNC
+# 🐝 HYDRA-UMC-SWARM-SYNC
 
 <p align="center"><a href="README.md">🇺🇸 English</a> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | 🇨🇳 <b>简体中文</b> | <a href="README_jpn.md">🇯🇵 日本語</a> | <a href="README_por.md">🇵🇹 Português</a></p>
 
 ### 📡 CRDT 状态协调与多节点同步
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Licencia-GPL%203.0-blue.svg" alt="GPL 3.0">
-  <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="CRDT">
+  <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
+  <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="Protocol">
+  <img src="https://img.shields.io/badge/Tests-102%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Version-0.1.5-0f6cbd.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
-
-**诚实核查 - 今天真正能运行的部分：** Lamport 逻辑时钟(`src/lamport.rs`)、经属性测试证明满足交换律/结合律/幂等性(而不仅仅是用一个例子肉眼验证)的 LWW-Element-Map CRDT 合并(`src/crdt.rs`)、CLI 与服务端共享的协调逻辑(`src/reconcile.rs`)、真实的、经过真正杀死并重启二进制文件验证的崩溃安全的按节点持久化(`src/store.rs`、`--state-file`)，以及公开这一切的 JSON/HTTP 服务器(`src/server.rs`、`tiny_http`、`POST /reconcile`、`GET /stats`)都是真实的并经过测试(102 个测试，`cargo test`)，包括一个 4 单元模拟测试，证明了在多轮分区和部分重连中收敛性依然成立。尚不真实的部分：PTP(IEEE 1588)硬件时间戳，即本 README 自身的徽章和"超精密同步"/"硬件时间戳"条目所描述的亚 100ns 精度——本 crate 中没有任何 PTP 代码，这部分将推迟到有真实的网卡/硬件定时器可供验证为止(见下方 ARCHITECTURE)。今天真实存在并经过测试的，是 CRDT 合并实际需要的逻辑(Lamport)时钟，而不是真正的硬件时钟同步。具体已交付的内容请见 `CHANGELOG.md`，尚待完成的部分请见下方 ROADMAP。
 
 ---
 
 > **安全与安防现状:**本生态系统不是经认证的安全系统。目前尚无硬件 E-STOP 通路,没有由固件强制执行的限位或联锁,也没有经过验证的运动指令;固件映像使用 CRC32 和共享密钥的 HMAC-SHA256 校验,而非非对称签名;TLS 与双向 TLS 均为可选项,默认关闭;自制电路板尚未组装或测试。在依赖此处任何说法来保障人身安全之前,请先阅读[安全基线](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/SECURITY_BASELINE.md)和[威胁模型](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/THREAT_MODEL.md)。
+
+---
 
 ## 📋 速览
 
@@ -25,10 +34,12 @@
 |---|---|
 | 版本 | `0.1.5` |
 | 成熟度 | 可用 |
-| 测试 | 70 (`cargo test`) |
+| 测试 | 102 (`cargo test`) |
 | 技术栈 | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
 | 目标 | HYDRA-UMC 工作单元的 Raspberry Pi CM5 |
 | 真实硬件 | 尚未：此版本没有在真实硬件上运行的记录 |
+
+**跳转：** [概述](#-概述) · [架构](#-架构) · [安全与防护](#-安全与防护) · [配置](#-配置) · [快速开始](#-快速开始) · [测试](#-测试) · [故障排除](#-故障排除) · [仓库结构](#-仓库结构) · [相关项目](#-相关项目)
 
 ## 🚦 项目状态
 
@@ -39,11 +50,11 @@
 | 领域 | 状态 | 在这里的含义 |
 |---|---|---|
 | 软件 | 🟡 | 主要用途可用；上面的诚实性检查列出了仍然缺少的内容 |
-| 测试 | 🟢 | 70 项自动测试，每次变更都会运行 |
+| 测试 | 🟢 | 102 项自动测试，每次变更都会运行 |
 | 真实硬件 | 🔴 | 尚未：此版本没有在真实硬件上运行的记录 |
 | 文档 | 🟢 | 八种语言的 README，每次变更都会与清单核对 |
 
-## 1. 🛠️ 技术概述
+## 🎯 概述
 
 **HYDRA-UMC-SWARM-SYNC** 是分布式工厂的状态协调层：一个由 Lamport 逻辑时钟排序的 CRDT（后写入者获胜的映射），使每个控制器无需中央仲裁者即可合并自己对集群的视图。精确同步的全局时钟（PTP / IEEE 1588）是长期目标，目前尚未实现：请见路线图。
 
@@ -60,9 +71,18 @@
 * 🔐 **真实的可选共享密钥认证(`SWARM_SYNC_SHARED_SECRET`):** 未配置时,本项目保持原有的局域网信任姿态——任何调用方都可以执行 `POST /reconcile` 或 `GET /state`。配置后(仅通过环境变量,绝不通过命令行参数——共享密钥应属于环境变量/systemd 单元,而非进程列表),两个路由都要求携带匹配的 `Authorization: Bearer <token>`,并以恒定时间比较。`GET /stats` 在两种情况下都保持开放。
 * 🧱 **拒绝成为网络上的开放节点，且请求体有上限（v0）：** 在非回环地址上运行 `serve` 需要 `SWARM_SYNC_SHARED_SECRET`（实验室环境可显式使用 `--allow-anonymous`），因为一个会合并网络上任意机器所发送内容的节点，会让该机器改写蜂群对自身的认知；超过 1 MiB 的请求体会在读取之前就被以 `413` 拒绝；状态文件在替换旧文件之前会被强制写入磁盘，因此断电不会留下被截断或为空的状态。*（已实现）*
 
----
+## 🧩 在 HYDRA-UMC 中的角色
 
-## 2. 🔄 同步层级结构
+**HYDRA-UMC-SWARM-SYNC** 把每个单元持有的群体视图合并成一个与合并顺序无关的结果：带 Lamport 逻辑时钟的“后写者获胜”映射。它可以用场景文件运行，也可以作为把状态保存在磁盘上、能与对等节点交换信息的小型 HTTP 节点运行；它不是硬件时间源。
+
+## 🏛️ 架构
+
+<p align="center">
+  <img src="images/architecture.svg" alt="HYDRA-UMC-SWARM-SYNC architecture" width="100%">
+</p>
+
+<details>
+<summary>图表的文本版本（Mermaid）</summary>
 
 ```mermaid
 flowchart TD
@@ -74,11 +94,13 @@ flowchart TD
     S3 -.-> H745_3["STM32H745 Local Clock"]
 ```
 
+</details>
+
+### 同步层级结构
+
 > 虚线箭头仅为计划，尚未实现：本仓库中没有 PTP 代码。
 
----
-
-## 3. 🧱 架构与设计决策
+### 架构与设计决策
 
 * **为何采用基于 CRDT 的同步，而非单一真实来源。** 多个 HYDRA-UMC 单元可以半自主运行并在之后重新连接——CRDT 合并策略无需中央仲裁者决定"谁的状态获胜"即可收敛，这是朴素的"最后写入者获胜"方法在真实网络分区场景下无法保证的。
 * **为何这是 HYDRA-UMC-ORCHESTRATOR 的兄弟项目，而非子模块。** 状态协调是一项持续的后台关注点，独立于任何单一的编排决策——将其保持为独立进程意味着编排器的重启不会中断正在进行中的合并。
@@ -87,50 +109,44 @@ flowchart TD
 * **为何 `merge_report()` 是一个新方法，而不是修改 `merge()` 的返回值。** `merge()` 依然保持纯粹、廉价、明显正确的黑盒特性——正是这种简单性使它易于被信任。`merge_report()` 在其之上为调用方（一个运维人员、一个调试工具）叠加了真实的冲突可见性，供其明确想知道一次协调究竟覆盖了什么，而不必强迫热路径 `merge()` 的每一个调用方都为这份记账买单或去处理它。
 * **为何冲突报告展示的是时间戳顺序，而不是因果上的“先于发生”。** Lamport 时钟保证真正的因果先于关系意味着更早的时间戳——但反过来并不成立：更早的时间戳并不能证明两个事件是因果相关的，而不仅仅是并发的。`MergeConflict` 刻意保持诚实，只报告 Lamport 时钟真正能够证明的东西（一个一致的全序关系），而不是需要向量时钟才能做出的因果性断言。
 
----
+## 🔒 安全与防护
 
-## 📂 目录结构
+| 威胁 | 防御 | 位置 |
+|---|---|---|
+| 网络上的某台机器改写群体对自身的视图 | 没有 `SWARM_SYNC_SHARED_SECRET` 时，`serve` 拒绝在非回环地址上监听（退出码 2）；`--allow-anonymous` 是明确的实验室选择 | `src/main.rs` |
+| 时间戳接近最大值的写入将永远赢得所有冲突 | 一次请求最多只能把时间推进到已持有的最新时间之后 `--max-time-jump`，把代数推进到该键自身代数之后 `--max-generation-jump`（默认 1000） | `src/entries.rs` |
+| 巨大或缓慢的请求拖垮节点 | 超过 1 MiB 的请求体在读取前即以 413 拒绝，四个工作线程处理请求，因此缓慢的上传只占用其中一个 | `src/server.rs` |
+| 断电留下被截断的状态文件 | 状态先写入临时文件，强制落盘，再重命名覆盖真实文件 | `src/store.rs` |
 
-```text
-HYDRA-UMC-SWARM-SYNC/
-├── src/
-│   ├── main.rs       # CLI 入口点：加载场景、协调、打印 JSON
-│   ├── lamport.rs    # LamportClock——CRDT 排序背后的逻辑时钟
-│   ├── crdt.rs       # LwwMap——真正的 CRDT：set/get/merge/snapshot
-│   ├── entries.rs    # Stamped entries: GET /state?full=1, POST /merge and their checks
-│   ├── gossip.rs     # Anti-entropy client: asks the peers for their state
-│   ├── reconcile.rs  # 真实的协调逻辑,拆分出来以便 server.rs 也能使用
-│   ├── server.rs     # 简洁的 JSON/HTTP 接口(tiny_http) - 通过网络的 POST /reconcile
-│   └── store.rs      # 真实的、可选的按节点持久化(--state-file):抗崩溃的 JSON 状态文件
-├── scenarios/        # 示例 JSON 场景（见下方"构建与运行"）
-├── tests/            # startup.rs: 状态文件不可读、最大时间跳变无效或 gossip 设置不可用时,程序拒绝启动
-├── docs/
-│   └── CLI_REFERENCE.md # 命令参考
-├── images/
-│   └── HYDRA_UMC_BANNER.svg # README 横幅图
-├── systemd/
-│   └── hydra-umc-swarm-sync.service # 本地 CM5 协调 API 的 systemd 单元
-├── tools/
-│   ├── build_test.py # 不递增版本号的构建检查
-│   ├── ci_validate.py # CI 使用的清单/CHANGELOG/文档校验
-│   ├── _doc_policy.py # 家族共享的文档规则 (HYDRA-UMC-SDK 的副本,保持同步)
-│   ├── _readme_parity.py # 检查八个 README 结构一致 (HYDRA-UMC-SDK 的副本,保持同步)
-│   └── hydra_project_tool.py # 每个仓库相同的命令: validate、test、ci、version、status、bump
-├── build/            # 编译后的二进制文件（build.sh/build.bat 的输出）
-├── Cargo.toml        # Rust 包清单（名称、版本、依赖项）
-├── bump_version.py   # 里程表式版本递增（仅由显式 `bump` 命令运行）
-├── bump_manifest_version.py # 将 hydra-umc.project.json 的版本与原生版本同步(--sync)
-├── build.sh/.bat     # 然后执行 `cargo build --release`
-├── run.sh/.bat       # 运行编译后的二进制文件
-└── README.md
+## ⚙️ 配置
+
+| 变量 | 默认值 | 设置内容 |
+|---|---|---|
+| `--addr` | `127.0.0.1` | HTTP 节点的地址 |
+| `--port` | `8112` | HTTP 节点的端口 |
+| `--state-file` / `SWARM_SYNC_STATE_FILE` | 无 | 在两次运行之间保存状态的文件 |
+| `SWARM_SYNC_SHARED_SECRET` | 无 | 网络节点要求调用方提供并发送给对等节点的共享密钥 |
+| `--max-time-jump` | `1000000` | 请求可写入到最新时间之后多远 |
+| `--max-generation-jump` | `1000` | 条目可超出键的代数多远 |
+| `--peer URL`, `--gossip-interval-ms`, `--gossip-push` | 关闭；每轮间隔至少 1000 毫秒，默认 10000 | 要询问其状态的对等节点、每轮之间的暂停，以及是否回推 |
+
+## 🚀 快速开始
+
+需要稳定版 Rust 工具链（2021 版）及 `cargo`。
+
+```bash
+./build.sh  # Linux, macOS (build.bat on Windows)
+./run.sh scenarios/example.json
+./run.sh serve --port 8112 --state-file data/state.json
 ```
 
-从原始模板中省略：`hardware/`、`firmware/` 和 `os/`——这是一个纯软件服务
-（Rust 二进制文件），没有专属硬件或固件，也没有需要维护的操作系统镜像。
+## 🧪 测试
 
----
+运行 `cargo test` 会执行 102 个自动测试。 不需要硬件，也不需要这台机器以外的任何东西。
 
-## 🔧 构建与运行
+CI 运行 `HYDRA_UMC_CI=1 python tools/ci_validate.py`，检查清单、文档、八个 README 和图片。
+
+## 🏗️ 构建与发布
 
 一个真实、经过测试的 CRDT 合并——而不只是一个能编译的骨架：它会
 协调一个多单元的 JSON 场景并打印收敛后的状态。
@@ -194,15 +210,65 @@ JSON 格式相同）和 `GET /stats`。`systemd/hydra-umc-swarm-sync.service`
 在 CM5 上无人值守运行的正是这个模式。完整用法、退出码和路由参考详见
 [`docs/CLI_REFERENCE.md`](docs/CLI_REFERENCE.md)。
 
----
+## 🩺 故障排除
 
-## 🚀 路线图
+| 你看到 | 原因 | 处理 |
+|---|---|---|
+| `[swarm-sync] fatal: ...` + exit code 2 | 端口被占用、地址不是回环且没有密钥，或状态文件存在但无法读取 | 阅读 `fatal:` 之后的提示；设置 `SWARM_SYNC_SHARED_SECRET`、更换端口或修复文件 |
+| HTTP 413 | 请求体超过 1 MiB | 发送更小的场景或将其拆分 |
+
+## 📂 仓库结构
+
+<p align="center">
+  <img src="images/repository-structure.svg" alt="Repository structure of HYDRA-UMC-SWARM-SYNC" width="100%">
+</p>
+
+<details>
+<summary>目录树的文本版本</summary>
+
+```text
+HYDRA-UMC-SWARM-SYNC/
+├── src/                       源代码
+│   ├── main.rs                CLI 入口点：加载场景、协调、打印 JSON
+│   ├── lamport.rs             LamportClock——CRDT 排序背后的逻辑时钟
+│   ├── crdt.rs                LwwMap——真正的 CRDT：set/get/merge/snapshot
+│   ├── entries.rs             Stamped entries: GET /state?full=1, POST /merge and their checks
+│   ├── gossip.rs              Anti-entropy client: asks the peers for their state
+│   ├── reconcile.rs           真实的协调逻辑,拆分出来以便 server.rs 也能使用
+│   ├── server.rs              简洁的 JSON/HTTP 接口(tiny_http) - 通过网络的 POST /reconcile
+│   └── store.rs               真实的、可选的按节点持久化(--state-file):抗崩溃的 JSON 状态文件
+├── scenarios/                 示例场景
+├── tests/                     startup.rs: 状态文件不可读、最大时间跳变无效或 gossip 设置不可用时,程序拒绝启动
+├── docs/                      项目文档
+├── images/                    横幅和 README 的图片
+├── systemd/                   服务单元
+├── tools/                     项目工具和 CI 检查
+├── .github/                   CI 工作流和 Issue 模板
+├── Cargo.toml                 Rust 包清单（名称、版本、依赖项）
+├── bump_version.py            显式提升版本
+├── bump_manifest_version.py   将 hydra-umc.project.json 的版本与原生版本同步(--sync)
+├── CHANGELOG.md               每个版本的变更
+├── build-test.sh              不修改内容的构建检查
+├── build.sh                   构建并检查；从不改变版本
+├── hydra-umc.project.json     清单：版本、成熟度、系列
+├── run.sh                     启动程序
+└── test.sh                    运行测试
+```
+
+</details>
+
+## 🗺️ 路线图与已知限制
+
+**当前已知限制**
+
 * **第一阶段：** 基于 TSN 的确定性集群同步与亚毫秒级抖动降低。
 * **第二阶段：** 多机器人单元中带动态避障的 3D 路径规划。
 * **第三阶段：** 利用实时资源可用性进行多机器人任务分发优化。
 * **第四阶段：** 支持通过 Wi-Fi 6（高可靠性模式）进行无线 PTP 同步，以及亚 100ns 精度验证。
 
----
+## 🌍 语言
+
+本 README 和仓库文档提供八种语言：英语、西班牙语、德语、法语、意大利语、日语、中文和葡萄牙语（葡萄牙）。它们同时编写，并由 CI 检查八个文件拥有相同的章节和相同的链接。 本仓库没有自己的界面或消息目录，因此没有需要翻译的界面文字。
 
 ## 🔗 相关项目
 
@@ -293,21 +359,26 @@ JSON 格式相同）和 `GET /stats`。`systemd/hydra-umc-swarm-sync.service`
 - **[HYDRA-UMC-OPS-AGENT](https://github.com/JuanenRac/HYDRA-UMC-OPS-AGENT)** — 维护事件协调器：一个低权限的边缘角色采集经过脱敏的库存/健康快照，一个控制面角色以只读方式渲染它，并请求某个 AI 提供方给出诊断建议——从不应用补丁，也从不部署任何内容。
 - **[HYDRA-UMC-DEV-SERVER](https://github.com/JuanenRac/HYDRA-UMC-DEV-SERVER)** — 可复现的开发主机（Raspberry Pi 5 / CM5），保存整个生态系统的源代码，并在持久队列下运行有界的构建/测试任务；这是专用的开发角色，明确区别于运行中的 CM5。
 
+## 📚 文档
 
----
+更多阅读：
 
-## 📚 文档与社区
+* [生态系统的安全基线](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/SECURITY_BASELINE.md)
+* [生态系统的威胁模型](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/THREAT_MODEL.md)
+* [本仓库的更新日志](CHANGELOG.md)
+* [本仓库的许可证](LICENSE.md)
 
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** —— 提交 Pull Request 所需的技术栈和编码规范。
-- **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)** —— 本社区所期望的行为准则。
-- **[SECURITY.md](SECURITY.md)** —— 如何报告漏洞，以及本项目真实的安全关注重点。
-- **[SUPPORT.md](SUPPORT.md)** —— 在哪里提问和报告缺陷。
-- **[LICENSE.md](LICENSE.md)** —— 本项目自身的许可证。
+## 🤝 参与贡献与社区
+
+* 提交 pull request 之前，请运行 `HYDRA_UMC_CI=1 py -3 tools/ci_validate.py`（或 `HYDRA_UMC_CI=1 python3 tools/ci_validate.py`）：它必须输出 `CI_VALIDATION=PASS`。此检查不要运行 `build.sh` 或 `build.bat`；构建不是检查。
+* 八个 README 由 HYDRA-UMC-DOCS 中的同一个源生成；请勿手工编辑。修改源文件，再用 `tools/make_readmes.py` 重新生成。
+* 不要在 README 中声称尚未运行过的内容：属实时请写“仅模拟”或“尚未在硬件上试过”。
+* 请参阅 [CONTRIBUTING.md](CONTRIBUTING.md)、[行为准则](CODE_OF_CONDUCT.md)、[SECURITY.md](SECURITY.md) 和 [SUPPORT.md](SUPPORT.md)。
 
 ## 👤 作者
-**JuanenRac** (Electro Hobby 3D)
-📧 electrohobby3d@gmail.com
-📺 [youtube.com/@electrohobby3d](https://youtube.com/@electrohobby3d)
+
+**JuanenRac (Electro Hobby 3D)** · electrohobby3d@gmail.com
 
 ## 📜 许可证
-GPL-3.0 —— 详见 LICENSE。
+
+GPL-3.0-or-later - [LICENSE](LICENSE).

@@ -1,23 +1,32 @@
+<!-- =============================================================================
+HYDRA-UMC-SWARM-SYNC - CRDT state reconciliation for the swarm
+Copyright (C) JuanenRac (Electro Hobby 3D) <electrohobby3d@gmail.com>
+GPL-3.0-or-later - see LICENSE
+============================================================================= -->
+
 <p align="center">
   <img src="images/HYDRA_UMC_BANNER.svg" alt="HYDRA-UMC-SWARM-SYNC banner" width="100%">
 </p>
 
-# ⏱️ HYDRA-UMC-SWARM-SYNC
+# 🐝 HYDRA-UMC-SWARM-SYNC
 
 <p align="center">🇺🇸 <b>English</b> | <a href="README_spa.md">🇪🇸 Español</a> | <a href="README_fra.md">🇫🇷 Français</a> | <a href="README_ita.md">🇮🇹 Italiano</a> | <a href="README_deu.md">🇩🇪 Deutsch</a> | <a href="README_zho.md">🇨🇳 简体中文</a> | <a href="README_jpn.md">🇯🇵 日本語</a> | <a href="README_por.md">🇵🇹 Português</a></p>
 
 ### 📡 CRDT State Reconciliation & Multi-Node Synchronization
 
 <p align="center">
-  <img src="https://img.shields.io/badge/License-GPL%203.0-blue.svg" alt="GPL 3.0">
-  <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="CRDT">
+  <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
+  <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="Protocol">
+  <img src="https://img.shields.io/badge/Tests-102%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Version-0.1.5-0f6cbd.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
-
-**Honesty check - what actually runs today:** the Lamport logical clock (`src/lamport.rs`), the LWW-Element-Map CRDT with a merge proven commutative/associative/idempotent by property tests, not just eyeballed on one example (`src/crdt.rs`), the reconciliation logic shared between the CLI and the server (`src/reconcile.rs`), the real crash-safe per-node persistence (`src/store.rs`, `--state-file`, verified against an actual killed-and-relaunched binary), the JSON/HTTP server exposing all of it (`src/server.rs`, `tiny_http`, `POST /reconcile`, `GET /stats`, `GET /state`), and its opt-in Shared-Secret Authentication (`SWARM_SYNC_SHARED_SECRET`) are real and tested (102 tests, `cargo test`), including a 4-cell simulation proving convergence across multiple rounds of partition and partial reconnection. What is NOT real: PTP (IEEE 1588) hardware timestamping, the sub-100ns accuracy this README's own badge and "Ultra-Precise Sync"/"Hardware Timestamping" bullets describe - there is no PTP code anywhere in this crate, and it stays deferred until there is real NIC/hardware-timer hardware to validate it against (see ARCHITECTURE below). What exists and is tested today is the logical (Lamport) clock the CRDT merge actually needs, not wall-clock hardware synchronization. See `CHANGELOG.md` for exactly what has shipped so far, and the ROADMAP below for what remains open.
 
 ---
 
 > **Safety and security status:** this ecosystem is not a certified safety system. There is no hardware E-STOP path, no firmware-enforced limits or interlocks and no verified motion command yet; firmware images are checked with CRC32 and a shared-key HMAC-SHA256, not with an asymmetric signature; TLS and mutual TLS are optional and off by default; no custom board has been populated or tested yet. Read the [security baseline](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/SECURITY_BASELINE.md) and the [threat model](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/THREAT_MODEL.md) before relying on any statement here for the safety of a person.
+
+---
 
 ## 📋 At a glance
 
@@ -25,10 +34,12 @@
 |---|---|
 | Version | `0.1.5` |
 | Maturity | Functional |
-| Tests | 70 (`cargo test`) |
+| Tests | 102 (`cargo test`) |
 | Stack | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
 | Target | The Raspberry Pi CM5 of a HYDRA-UMC cell |
 | On real hardware | Not yet: no run on real hardware is recorded for this version |
+
+**Jump to:** [Overview](#-overview) · [Architecture](#-architecture) · [Security & Safety](#-security--safety) · [Configuration](#-configuration) · [Quick start](#-quick-start) · [Testing](#-testing) · [Troubleshooting](#-troubleshooting) · [Repository Structure](#-repository-structure) · [Related Projects](#-related-projects)
 
 ## 🚦 Project status
 
@@ -39,11 +50,11 @@ Each line is one part of this repository and the light says how far it is today.
 | Area | State | What it means here |
 |---|---|---|
 | Software | 🟡 | Works for its main purpose; the honesty check above lists what is still missing |
-| Tests | 🟢 | 70 automated tests, run on every change |
+| Tests | 🟢 | 102 automated tests, run on every change |
 | Real hardware | 🔴 | Not yet: no run on real hardware is recorded for this version |
 | Documentation | 🟢 | README in eight languages, checked against the manifest on every change |
 
-## 1. 🛠️ TECHNICAL OVERVIEW
+## 🎯 Overview
 
 **HYDRA-UMC-SWARM-SYNC** is the state-reconciliation layer of the distributed factory: a CRDT (a last-writer-wins map ordered by a Lamport logical clock) that lets every controller merge its view of the swarm without a central arbiter. A precisely synchronized global clock (PTP / IEEE 1588) is the long-term goal and is not implemented: see the roadmap.
 
@@ -60,9 +71,18 @@ Starting and ending the trajectories of several arms at the same microsecond, or
 * 🔐 **Real Opt-In Shared-Secret Authentication (`SWARM_SYNC_SHARED_SECRET`):** unset, this project keeps its original LAN-trust posture - any caller can `POST /reconcile` or `GET /state`. Set (env var only, never a CLI flag - a shared secret belongs in the environment/systemd unit, not a process listing), both routes require a matching `Authorization: Bearer <token>`, checked in constant time. `GET /stats` stays open either way.
 * 🧱 **Refuses to be an open node on the network, and bounded bodies (v0):** `serve` on an address other than loopback needs `SWARM_SYNC_SHARED_SECRET` (or an explicit `--allow-anonymous` for a lab), because a node that merges whatever any machine on the network sends it lets that machine rewrite the swarm's view of itself; request bodies over 1 MiB are refused with `413` before they are read; and the state file is forced to disk before it replaces the previous one, so a power cut cannot leave a truncated or empty state behind. *(implemented)*
 
----
+## 🧩 Role in HYDRA-UMC
 
-## 2. 🔄 SYNC HIERARCHY
+**HYDRA-UMC-SWARM-SYNC** merges the views of the swarm that each cell holds into one result that does not depend on the order of the merge: a last-writer-wins map with a Lamport logical clock. It runs from a scenario file or as a small HTTP node that keeps its state on disk and can gossip with peers; it is not a hardware time source.
+
+## 🏛️ Architecture
+
+<p align="center">
+  <img src="images/architecture.svg" alt="HYDRA-UMC-SWARM-SYNC architecture" width="100%">
+</p>
+
+<details>
+<summary>Text version of the diagram (Mermaid)</summary>
 
 ```mermaid
 flowchart TD
@@ -74,11 +94,13 @@ flowchart TD
     S3 -.-> H745_3["STM32H745 Local Clock"]
 ```
 
+</details>
+
+### SYNC HIERARCHY
+
 > Dotted arrows are planned, not implemented: there is no PTP code in this repository.
 
----
-
-## 3. 🧱 ARCHITECTURE & DESIGN DECISIONS
+### ARCHITECTURE & DESIGN DECISIONS
 
 * **Why CRDT-based sync, not a single source of truth.** Multiple HYDRA-UMC cells can run semi-autonomously and reconnect later - a CRDT merge strategy converges without a central arbiter deciding whose state 'wins', which a naive last-write-wins approach can't guarantee across a real network partition.
 * **Why this is a sibling, not a submodule, of HYDRA-UMC-ORCHESTRATOR.** State reconciliation is a continuous background concern independent of any single orchestration decision - keeping it a separate process means an orchestrator restart doesn't interrupt an in-flight merge.
@@ -87,51 +109,44 @@ flowchart TD
 * **Why `merge_report()` is a new method instead of changing what `merge()` returns.** `merge()` stays a pure, cheap, obviously-correct black box - that simplicity is what makes it easy to trust. `merge_report()` layers real conflict visibility on top for a caller (an operator, a debugging tool) that specifically wants to know what a reconciliation overwrote, without forcing every caller of the hot-path `merge()` to pay for or handle that bookkeeping.
 * **Why conflict reports show stamp order, not causal "happened-before".** A Lamport clock guarantees that true causal happens-before implies an earlier stamp - but the converse doesn't hold: an earlier stamp does NOT prove two events were causally related rather than merely concurrent. `MergeConflict` is deliberately honest about reporting only what a Lamport clock can actually prove (a consistent total order), not a causality claim a vector clock would be needed to make.
 
----
+## 🔒 Security & Safety
 
-## 📂 DIRECTORY STRUCTURE
+| Threat | Defence | Where |
+|---|---|---|
+| A machine on the network rewrites the swarm's view of itself | `serve` refuses to listen on a non-loopback address without `SWARM_SYNC_SHARED_SECRET` (exit code 2); `--allow-anonymous` is an explicit lab choice | `src/main.rs` |
+| A write stamped near the largest time wins every conflict for ever | A request may move a time at most `--max-time-jump` past the newest time held, and a generation at most `--max-generation-jump` (1000 by default) past the key's own | `src/entries.rs` |
+| A huge or slow request starves the node | A body over 1 MiB is refused with 413 before it is read, and four worker threads serve requests so one slow upload holds only one of them | `src/server.rs` |
+| A power cut leaves a truncated state file | The state is written to a temporary file, forced to disk and renamed over the real one | `src/store.rs` |
 
-```text
-HYDRA-UMC-SWARM-SYNC/
-├── src/
-│   ├── main.rs       # CLI entry point: loads a scenario, reconciles, prints JSON
-│   ├── lamport.rs    # LamportClock - the logical clock behind the CRDT's ordering
-│   ├── crdt.rs       # LwwMap - the real CRDT: set/get/merge/snapshot
-│   ├── entries.rs    # Stamped entries: GET /state?full=1, POST /merge and their checks
-│   ├── gossip.rs     # Anti-entropy client: asks the peers for their state
-│   ├── reconcile.rs  # Real reconciliation, split out so server.rs can reach it too
-│   ├── server.rs     # Plain JSON/HTTP surface (tiny_http) - POST /reconcile over the network
-│   └── store.rs      # Real opt-in per-node persistence (--state-file): a crash-safe JSON state file
-├── scenarios/        # Example JSON scenarios (see BUILD & RUN below)
-├── tests/            # startup.rs: the binary refuses to start on an unreadable state file, a bad max time jump or unusable gossip settings
-├── docs/
-│   └── CLI_REFERENCE.md # Command reference
-├── images/
-│   └── HYDRA_UMC_BANNER.svg # README banner
-├── systemd/
-│   └── hydra-umc-swarm-sync.service # Local CM5 reconciliation API systemd unit
-├── tools/
-│   ├── build_test.py # Non-versioning build/compile check
-│   ├── ci_validate.py # Manifest/CHANGELOG/docs validation used by CI
-│   ├── _doc_policy.py # Documentation rules shared by the family (a copy of HYDRA-UMC-SDK's, kept in sync)
-│   ├── _readme_parity.py # Check that the eight READMEs share one structure (a copy of HYDRA-UMC-SDK's, kept in sync)
-│   └── hydra_project_tool.py # The same commands in every repository: validate, test, ci, version, status, bump
-├── build/            # Compiled binaries (build.sh/build.bat output)
-├── Cargo.toml        # Rust package manifest (name, version, deps)
-├── bump_version.py   # Odometer-style version bump (run only by the explicit `bump` command)
-├── bump_manifest_version.py # Syncs hydra-umc.project.json's version to the native one (--sync)
-├── build.sh/.bat     # Validate and build (building never changes the version)
-├── run.sh/.bat       # Runs the compiled binary
-└── README.md
+## ⚙️ Configuration
+
+| Variable | Default | What it sets |
+|---|---|---|
+| `--addr` | `127.0.0.1` | address of the HTTP node |
+| `--port` | `8112` | port of the HTTP node |
+| `--state-file` / `SWARM_SYNC_STATE_FILE` | none | file that keeps the state between runs |
+| `SWARM_SYNC_SHARED_SECRET` | none | shared secret that a network node requires from callers and sends to peers |
+| `--max-time-jump` | `1000000` | how far past the newest time a request may write |
+| `--max-generation-jump` | `1000` | how far past a key's generation an entry may be |
+| `--peer URL`, `--gossip-interval-ms`, `--gossip-push` | off; at least 1000 ms between rounds, 10000 by default | peers to ask for their state, the pause between rounds, and whether to push back |
+
+## 🚀 Quick start
+
+Requires the stable Rust toolchain (edition 2021) with `cargo`.
+
+```bash
+./build.sh  # Linux, macOS (build.bat on Windows)
+./run.sh scenarios/example.json
+./run.sh serve --port 8112 --state-file data/state.json
 ```
 
-Pruned from the original template: `hardware/`, `firmware/` and `os/` —
-this is a pure software service (Rust binary) with no dedicated hardware
-or firmware of its own and no operating system image to maintain.
+## 🧪 Testing
 
----
+102 automated tests run with `cargo test`. They need no hardware and nothing outside this machine.
 
-## 🔧 BUILD & RUN GUIDE
+The CI runs `HYDRA_UMC_CI=1 python tools/ci_validate.py`, which checks the manifest, the documents, the eight READMEs and the pictures.
+
+## 🏗️ Build & Release
 
 A real, tested CRDT merge - not just a skeleton that compiles: it
 reconciles a multi-cell JSON scenario and prints the converged state.
@@ -185,7 +200,7 @@ cargo test   # the Lamport clock, and the CRDT itself - including direct
              # deterministic-tie-break test for truly concurrent writes,
              # merge_report()'s own conflict-detection behavior, and a
              # 4-cell simulation proving convergence across multiple
-             # rounds of partition and partial reconnection - 70 tests total
+             # rounds of partition and partial reconnection - 102 tests total
 ```
 
 The same `reconcile()` call is also reachable over a real JSON/HTTP API
@@ -197,15 +212,65 @@ the request body, same JSON shape) and `GET /stats`. This is what
 usage, exit codes, and the complete route reference are in
 [`docs/CLI_REFERENCE.md`](docs/CLI_REFERENCE.md).
 
----
+## 🩺 Troubleshooting
 
-## 🚀 ROADMAP
+| You see | Because | Do |
+|---|---|---|
+| `[swarm-sync] fatal: ...` + exit code 2 | The port is taken, the address is not loopback and there is no secret, or the state file exists but cannot be read | Read the message after `fatal:`; set `SWARM_SYNC_SHARED_SECRET`, change the port or fix the file |
+| HTTP 413 | The request body is larger than 1 MiB | Send a smaller scenario or split it |
+
+## 📂 Repository Structure
+
+<p align="center">
+  <img src="images/repository-structure.svg" alt="Repository structure of HYDRA-UMC-SWARM-SYNC" width="100%">
+</p>
+
+<details>
+<summary>Text version of the tree</summary>
+
+```text
+HYDRA-UMC-SWARM-SYNC/
+├── src/                       source code
+│   ├── main.rs                CLI entry point: loads a scenario, reconciles, prints JSON
+│   ├── lamport.rs             LamportClock - the logical clock behind the CRDT's ordering
+│   ├── crdt.rs                LwwMap - the real CRDT: set/get/merge/snapshot
+│   ├── entries.rs             Stamped entries: GET /state?full=1, POST /merge and their checks
+│   ├── gossip.rs              Anti-entropy client: asks the peers for their state
+│   ├── reconcile.rs           Real reconciliation, split out so server.rs can reach it too
+│   ├── server.rs              Plain JSON/HTTP surface (tiny_http) - POST /reconcile over the network
+│   └── store.rs               Real opt-in per-node persistence (--state-file): a crash-safe JSON state file
+├── scenarios/                 example scenarios
+├── tests/                     startup.rs: the binary refuses to start on an unreadable state file, a bad max time jump or unusable gossip settings
+├── docs/                      documents of the project
+├── images/                    banner and the pictures of the README
+├── systemd/                   service unit
+├── tools/                     project tools and CI checks
+├── .github/                   CI workflow and issue templates
+├── Cargo.toml                 Rust package manifest (name, version, deps)
+├── bump_version.py            explicit version bump
+├── bump_manifest_version.py   Syncs hydra-umc.project.json's version to the native one (--sync)
+├── CHANGELOG.md               what changed in each version
+├── build-test.sh              non-mutating build check
+├── build.sh                   builds and checks; never changes the version
+├── hydra-umc.project.json     manifest: version, maturity, family
+├── run.sh                     starts the program
+└── test.sh                    runs the tests
+```
+
+</details>
+
+## 🗺️ Roadmap & Known limits
+
+**Known limits today**
+
 * **Phase 1:** Deterministic swarm synchronization over TSN and sub-ms jitter reduction.
 * **Phase 2:** 3D Path planning with dynamic obstacle avoidance in multi-robot cells.
 * **Phase 3:** Multi-robot job dispatching optimization using real-time resource availability.
 * **Phase 4:** Support for wireless PTP sync over Wi-Fi 6 (High-Reliability Mode) and sub-100ns accuracy validation.
 
----
+## 🌍 Languages
+
+This README and the documents of the repository exist in eight languages: English, Spanish, German, French, Italian, Japanese, Chinese and Portuguese (Portugal). They are written together and checked in the CI so that the eight files have the same sections and the same links. This repository has no screen or message catalogue of its own, so there are no interface strings to translate.
 
 ## 🔗 Related Projects
 
@@ -296,21 +361,26 @@ This project is part of the HYDRA-UMC robotics ecosystem by the same author (Jua
 - **[HYDRA-UMC-OPS-AGENT](https://github.com/JuanenRac/HYDRA-UMC-OPS-AGENT)** — maintenance-incident coordinator: a low-privilege edge role collects a sanitized inventory/health snapshot, a control-plane role renders it read-only and asks an AI provider to suggest a diagnosis - never applies a patch or deploys anything.
 - **[HYDRA-UMC-DEV-SERVER](https://github.com/JuanenRac/HYDRA-UMC-DEV-SERVER)** — reproducible development host (Raspberry Pi 5 / CM5) that stores the ecosystem's source and runs bounded build/test tasks under a durable queue; a dedicated dev role, explicitly not an operational CM5.
 
+## 📚 Documentation
 
----
+Where to read more:
 
-## 📚 Documentation & Community
+* [Security baseline of the ecosystem](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/SECURITY_BASELINE.md)
+* [Threat model of the ecosystem](https://github.com/JuanenRac/HYDRA-UMC-DOCS/blob/main/docs/THREAT_MODEL.md)
+* [Changelog of this repository](CHANGELOG.md)
+* [License of this repository](LICENSE.md)
 
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** — tech stack and coding guidelines for a pull request.
-- **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)** — the standards of behavior expected in this community.
-- **[SECURITY.md](SECURITY.md)** — how to report a vulnerability, and this project's own real security focus areas.
-- **[SUPPORT.md](SUPPORT.md)** — where to ask questions and report bugs.
-- **[LICENSE.md](LICENSE.md)** — this project's own license.
+## 🤝 Contributing & Community
+
+* Before a pull request run `HYDRA_UMC_CI=1 py -3 tools/ci_validate.py` (or `HYDRA_UMC_CI=1 python3 tools/ci_validate.py`): it must print `CI_VALIDATION=PASS`. Do not run `build.sh` or `build.bat` for this check; building is not a check.
+* The eight READMEs are written from one source in HYDRA-UMC-DOCS; do not edit them by hand. Change the source and write them again with `tools/make_readmes.py`.
+* Do not state in a README what has not run: say "simulated" or "not tried on hardware" where that is the truth.
+* See [CONTRIBUTING.md](CONTRIBUTING.md), the [code of conduct](CODE_OF_CONDUCT.md), [SECURITY.md](SECURITY.md) and [SUPPORT.md](SUPPORT.md).
 
 ## 👤 AUTHOR
-**JuanenRac** (Electro Hobby 3D)
-📧 electrohobby3d@gmail.com
-📺 [youtube.com/@electrohobby3d](https://youtube.com/@electrohobby3d)
+
+**JuanenRac (Electro Hobby 3D)** · electrohobby3d@gmail.com
 
 ## 📜 LICENSE
-GPL-3.0 - See LICENSE for details.
+
+GPL-3.0-or-later - [LICENSE](LICENSE).
