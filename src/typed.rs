@@ -33,7 +33,9 @@ fn validator() -> &'static Validator {
         jsonschema::draft202012::options()
             .should_validate_formats(true)
             .build(&schema)
-            .unwrap_or_else(|error| panic!("the vendored robot state schema does not compile: {error}"))
+            .unwrap_or_else(|error| {
+                panic!("the vendored robot state schema does not compile: {error}")
+            })
     })
 }
 
@@ -42,7 +44,8 @@ pub fn check_value(key: &str, value: &str) -> Result<(), String> {
     let Some(robot_id) = key.strip_prefix(ROBOT_STATE_PREFIX) else {
         return Ok(());
     };
-    let state: Value = serde_json::from_str(value).map_err(|error| format!("a robot state must be JSON: {error}"))?;
+    let state: Value = serde_json::from_str(value)
+        .map_err(|error| format!("a robot state must be JSON: {error}"))?;
     let mut problems: Vec<String> = validator()
         .iter_errors(&state)
         .map(|error| {
@@ -58,15 +61,21 @@ pub fn check_value(key: &str, value: &str) -> Result<(), String> {
     problems.dedup();
     if problems.is_empty() {
         if state.get("robot_id").and_then(Value::as_str) != Some(robot_id) {
-            problems.push(format!("robot_id is not {robot_id:?}, the robot of the key"));
+            problems.push(format!(
+                "robot_id is not {robot_id:?}, the robot of the key"
+            ));
         }
         let orientation = state.get("pose").and_then(|pose| pose.get("orientation"));
         if let Some(orientation) = orientation {
             let part = |name: &str| orientation.get(name).and_then(Value::as_f64);
-            if let (Some(w), Some(x), Some(y), Some(z)) = (part("w"), part("x"), part("y"), part("z")) {
+            if let (Some(w), Some(x), Some(y), Some(z)) =
+                (part("w"), part("x"), part("y"), part("z"))
+            {
                 let length = (w * w + x * x + y * y + z * z).sqrt();
                 if !length.is_finite() || (length - 1.0).abs() > QUATERNION_TOLERANCE {
-                    problems.push(format!("the quaternion of the pose has length {length}, not 1"));
+                    problems.push(format!(
+                        "the quaternion of the pose has length {length}, not 1"
+                    ));
                 }
             }
         }
@@ -99,19 +108,25 @@ mod tests {
 
     #[test]
     fn a_free_string_or_broken_json_under_the_prefix_is_refused() {
-        assert!(check_value("robot_state/arm-1", "estop-cleared").unwrap_err().contains("must be JSON"));
+        assert!(check_value("robot_state/arm-1", "estop-cleared")
+            .unwrap_err()
+            .contains("must be JSON"));
         assert!(check_value("robot_state/arm-1", "").is_err());
         assert!(check_value("robot_state/arm-1", "[]").is_err());
     }
 
     #[test]
     fn a_state_that_breaks_the_contract_is_described() {
-        let bad = VALID.replace("busy", "sleeping").replace("2024-01-01T00:00:00Z", "later");
+        let bad = VALID
+            .replace("busy", "sleeping")
+            .replace("2024-01-01T00:00:00Z", "later");
         let why = check_value("robot_state/arm-1", &bad).unwrap_err();
         assert!(why.contains("/state"), "{why}");
         assert!(why.contains("/updated_at_utc"), "{why}");
         let battery = VALID.replace("80", "180");
-        assert!(check_value("robot_state/arm-1", &battery).unwrap_err().contains("battery_percent"));
+        assert!(check_value("robot_state/arm-1", &battery)
+            .unwrap_err()
+            .contains("battery_percent"));
     }
 
     #[test]
@@ -123,6 +138,8 @@ mod tests {
     #[test]
     fn the_pose_quaternion_must_have_unit_length() {
         let bad = VALID.replace(r#""w": 1, "x": 0"#, r#""w": 1, "x": 1"#);
-        assert!(check_value("robot_state/arm-1", &bad).unwrap_err().contains("not 1"));
+        assert!(check_value("robot_state/arm-1", &bad)
+            .unwrap_err()
+            .contains("not 1"));
     }
 }

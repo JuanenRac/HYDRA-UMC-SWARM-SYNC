@@ -1020,14 +1020,24 @@ mod tests {
     #[test]
     fn a_robot_state_is_replicated_as_a_typed_value_and_a_free_string_under_its_key_is_refused() {
         let port = start_test_server();
-        let (status, _) = post(port, "/reconcile", &robot_state_scenario("robot_state/arm-1", ROBOT_STATE, 1));
+        let (status, _) = post(
+            port,
+            "/reconcile",
+            &robot_state_scenario("robot_state/arm-1", ROBOT_STATE, 1),
+        );
         assert_eq!(status, 200);
         let (_, body) = get(port, "/state");
-        assert!(body.contains("robot_state/arm-1") && body.contains("busy"), "{body}");
+        assert!(
+            body.contains("robot_state/arm-1") && body.contains("busy"),
+            "{body}"
+        );
 
         for (key, value) in [
             ("robot_state/arm-1", "estop-cleared"),
-            ("robot_state/arm-1", r#"{"schema_version": "1.0", "robot_id": "arm-1", "state": "sleeping", "updated_at_utc": "2024-01-01T00:00:00Z"}"#),
+            (
+                "robot_state/arm-1",
+                r#"{"schema_version": "1.0", "robot_id": "arm-1", "state": "sleeping", "updated_at_utc": "2024-01-01T00:00:00Z"}"#,
+            ),
             ("robot_state/arm-2", ROBOT_STATE),
         ] {
             let (status, body) = post(port, "/reconcile", &robot_state_scenario(key, value, 2));
@@ -1035,9 +1045,20 @@ mod tests {
             assert!(body.contains("robot state"), "{body}");
         }
         // other keys stay untyped, and nothing the refusals carried reached the map
-        assert_eq!(post(port, "/reconcile", &robot_state_scenario("robot-1", "estop-cleared", 3)).0, 200);
+        assert_eq!(
+            post(
+                port,
+                "/reconcile",
+                &robot_state_scenario("robot-1", "estop-cleared", 3)
+            )
+            .0,
+            200
+        );
         let (_, body) = get(port, "/state");
-        assert!(!body.contains("sleeping") && body.contains("estop-cleared"), "{body}");
+        assert!(
+            !body.contains("sleeping") && body.contains("estop-cleared"),
+            "{body}"
+        );
     }
 
     #[test]

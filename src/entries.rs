@@ -107,7 +107,8 @@ pub fn check_entries(
             return Err(invalid(&entry.key, "the value is too long"));
         }
         if let Some(value) = &entry.value {
-            crate::typed::check_value(&entry.key, value).map_err(|reason| invalid(&entry.key, &reason))?;
+            crate::typed::check_value(&entry.key, value)
+                .map_err(|reason| invalid(&entry.key, &reason))?;
         }
         if entry.generation == 0 {
             return Err(invalid(&entry.key, "the generation starts at 1"));
