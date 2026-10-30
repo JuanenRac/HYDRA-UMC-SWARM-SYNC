@@ -131,6 +131,7 @@ flowchart TD
 | `SWARM_SYNC_SHARED_SECRET` | 无 | 网络节点要求调用方提供并发送给对等节点的共享密钥 |
 | `--max-time-jump` | `1000000` | 请求可写入到最新时间之后多远 |
 | `--max-generation-jump` | `1000` | 条目可超出键的代数多远 |
+| `--presence` | `delete-wins` | 同一键的删除与并发添加如何裁决：`delete-wins` 或 `add-wins`（集群中所有节点必须一致） |
 | `--peer URL`, `--gossip-interval-ms`, `--gossip-push` | 关闭；每轮间隔至少 1000 毫秒，默认 10000 | 要询问其状态的对等节点、每轮之间的暂停，以及是否回推 |
 
 ## 🚀 快速开始

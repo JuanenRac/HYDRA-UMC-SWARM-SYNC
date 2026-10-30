@@ -79,6 +79,18 @@ fn run_serve(args: &[String]) -> ExitCode {
         },
         None => reconcile::DEFAULT_MAX_TIME_JUMP,
     };
+    // how a delete and a concurrent add of the same key are resolved; the
+    // default keeps a delete ahead of every add of the same life
+    match find_flag(args, "--presence").as_deref() {
+        None | Some("delete-wins") => crdt::set_add_wins(false),
+        Some("add-wins") => crdt::set_add_wins(true),
+        Some(other) => {
+            eprintln!(
+                "[swarm-sync] fatal: --presence must be delete-wins or add-wins, got {other:?}"
+            );
+            return ExitCode::from(2);
+        }
+    }
     let max_generation_jump = match find_flag(args, "--max-generation-jump") {
         Some(raw) => match raw.parse::<u64>() {
             Ok(n) if n >= 1 => n,
@@ -206,7 +218,7 @@ fn main() -> ExitCode {
     let Some(scenario_path) = args.get(1) else {
         eprintln!("Usage: hydra-umc-swarm-sync <scenario.json>");
         eprintln!(
-            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--allow-anonymous]"
+            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--allow-anonymous]"
         );
         eprintln!("See scenarios/example.json for the expected format.");
         return ExitCode::SUCCESS;

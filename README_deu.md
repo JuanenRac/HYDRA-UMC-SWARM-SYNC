@@ -131,6 +131,7 @@ flowchart TD
 | `SWARM_SYNC_SHARED_SECRET` | keiner | gemeinsames Geheimnis, das ein Netzknoten von Aufrufern verlangt und an Nachbarn sendet |
 | `--max-time-jump` | `1000000` | wie weit eine Anfrage über die neueste Zeit hinaus schreiben darf |
 | `--max-generation-jump` | `1000` | wie weit ein Eintrag über der Generation des Schlüssels liegen darf |
+| `--presence` | `delete-wins` | wie ein Löschen und ein gleichzeitiges Hinzufügen desselben Schlüssels aufgelöst werden: `delete-wins` oder `add-wins` (alle Knoten eines Schwarms müssen dasselbe verwenden) |
 | `--peer URL`, `--gossip-interval-ms`, `--gossip-push` | aus; mindestens 1000 ms zwischen Runden, Standard 10000 | Nachbarn, deren Zustand erfragt wird, die Pause zwischen Runden und ob zurückgeschickt wird |
 
 ## 🚀 Schnellstart

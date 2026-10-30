@@ -131,6 +131,7 @@ flowchart TD
 | `SWARM_SYNC_SHARED_SECRET` | nessuno | segreto condiviso che un nodo di rete richiede ai chiamanti e invia ai pari |
 | `--max-time-jump` | `1000000` | fino a dove una richiesta può scrivere oltre il tempo più recente |
 | `--max-generation-jump` | `1000` | fino a dove una voce può superare la generazione della chiave |
+| `--presence` | `delete-wins` | come si risolvono una cancellazione e un'aggiunta concorrente della stessa chiave: `delete-wins` o `add-wins` (tutti i nodi dello sciame devono usare lo stesso) |
 | `--peer URL`, `--gossip-interval-ms`, `--gossip-push` | disattivato; almeno 1000 ms tra i giri, 10000 per impostazione predefinita | pari a cui chiedere lo stato, la pausa tra i giri e se rimandare il proprio |
 
 ## 🚀 Avvio rapido

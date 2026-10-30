@@ -131,6 +131,7 @@ flowchart TD
 | `SWARM_SYNC_SHARED_SECRET` | aucun | secret partagé qu'un nœud réseau exige des appelants et envoie aux pairs |
 | `--max-time-jump` | `1000000` | jusqu'où une requête peut écrire au-delà du temps le plus récent |
 | `--max-generation-jump` | `1000` | jusqu'où une entrée peut dépasser la génération de la clé |
+| `--presence` | `delete-wins` | comment sont résolus une suppression et un ajout concurrent de la même clé : `delete-wins` ou `add-wins` (tous les nœuds d'un essaim doivent utiliser le même) |
 | `--peer URL`, `--gossip-interval-ms`, `--gossip-push` | désactivé ; au moins 1000 ms entre deux tours, 10000 par défaut | pairs dont on demande l'état, la pause entre les tours et l'envoi en retour |
 
 ## 🚀 Démarrage rapide

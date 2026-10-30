@@ -135,6 +135,7 @@ flowchart TD
 | `SWARM_SYNC_SHARED_SECRET` | nenhum | segredo partilhado que um nó de rede exige a quem chama e envia aos pares |
 | `--max-time-jump` | `1000000` | até onde um pedido pode escrever para além do tempo mais recente |
 | `--max-generation-jump` | `1000` | até onde uma entrada pode estar acima da geração da chave |
+| `--presence` | `delete-wins` | como se resolvem um apagamento e uma adição concorrente da mesma chave: `delete-wins` ou `add-wins` (todos os nós do enxame têm de usar o mesmo) |
 | `--peer URL`, `--gossip-interval-ms`, `--gossip-push` | desligado; pelo menos 1000 ms entre rondas, 10000 por predefinição | pares a quem pedir o estado, a pausa entre rondas e se se devolve o próprio |
 
 ## 🚀 Início rápido

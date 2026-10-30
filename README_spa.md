@@ -131,6 +131,7 @@ flowchart TD
 | `SWARM_SYNC_SHARED_SECRET` | ninguno | secreto compartido que un nodo de red exige a quien llama y envía a los pares |
 | `--max-time-jump` | `1000000` | hasta dónde puede escribir una petición sobre el tiempo más reciente |
 | `--max-generation-jump` | `1000` | hasta dónde puede estar una entrada sobre la generación de la clave |
+| `--presence` | `delete-wins` | cómo se resuelven un borrado y un alta concurrente de la misma clave: `delete-wins` o `add-wins` (todos los nodos del enjambre deben usar lo mismo) |
 | `--peer URL`, `--gossip-interval-ms`, `--gossip-push` | desactivado; al menos 1000 ms entre rondas, 10000 por defecto | pares a los que pedir su estado, la pausa entre rondas y si se devuelve el propio |
 
 ## 🚀 Inicio rápido

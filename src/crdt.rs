@@ -33,6 +33,56 @@
 use crate::lamport::LamportTime;
 use std::collections::BTreeMap;
 use std::hash::Hash;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Whether a write that did not see a delete survives it (add-wins) or the
+/// delete beats every add of the same life (generation first, the default).
+static ADD_WINS: AtomicBool = AtomicBool::new(false);
+
+#[cfg(test)]
+thread_local! {
+    static TEST_ADD_WINS: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+/// Chooses how a delete and a concurrent add of the same key are resolved.
+/// Set once at start; every node of a swarm has to use the same choice, or
+/// two nodes can keep different winners for the same pair of entries.
+pub fn set_add_wins(on: bool) {
+    ADD_WINS.store(on, Ordering::Relaxed);
+}
+
+fn add_wins_active() -> bool {
+    #[cfg(test)]
+    if let Some(v) = TEST_ADD_WINS.with(|c| c.get()) {
+        return v;
+    }
+    ADD_WINS.load(Ordering::Relaxed)
+}
+
+/// The total order two entries of one key are compared by. By default it is
+/// the stamp itself (generation, time, writer). With add-wins a tombstone is
+/// ranked in the life it ended (generation - 1): an add of that same life
+/// that is later than the delete did not see it, so it survives, while an
+/// add of an earlier life or an earlier time still loses. A tuple of totally
+/// ordered fields is itself total, so the merge laws keep holding.
+type Rank = (u64, LamportTime, u64, u8);
+
+fn rank_of(stamp: &Stamp, present: bool) -> Rank {
+    if add_wins_active() {
+        if present {
+            (stamp.generation, stamp.time, stamp.writer, 1)
+        } else {
+            (
+                stamp.generation.saturating_sub(1),
+                stamp.time,
+                stamp.writer,
+                0,
+            )
+        }
+    } else {
+        (stamp.generation, stamp.time, stamp.writer, 0)
+    }
+}
 
 /// One entry's version stamp: (generation, logical time, writer node
 /// ID). Comparing two stamps is what resolves a conflict on the same
@@ -78,6 +128,12 @@ struct Entry<V> {
     /// header comment for why the distinction matters.
     value: Option<V>,
     stamp: Stamp,
+}
+
+impl<V> Entry<V> {
+    fn rank(&self) -> Rank {
+        rank_of(&self.stamp, self.value.is_some())
+    }
 }
 
 /// A CRDT map from `K` to `V`, synchronized via last-writer-wins per key.
@@ -161,7 +217,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
             writer,
         };
         match self.entries.get(&key) {
-            Some(existing) if existing.stamp >= new_stamp => {
+            Some(existing) if existing.rank() >= rank_of(&new_stamp, true) => {
                 // An existing write already wins this conflict - ignore.
             }
             _ => {
@@ -204,7 +260,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
             writer,
         };
         match self.entries.get(&key) {
-            Some(existing) if existing.stamp >= new_stamp => {}
+            Some(existing) if existing.rank() >= rank_of(&new_stamp, false) => {}
             _ => {
                 self.entries.insert(
                     key,
@@ -264,7 +320,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
                 // matching case).
                 Ok(())
             }
-            Some(existing) if existing.stamp > new_stamp => Ok(()), // an existing write already wins - ignore, same as set()
+            Some(existing) if existing.rank() > rank_of(&new_stamp, true) => Ok(()), // an existing write already wins - ignore, same as set()
             _ => {
                 self.entries.insert(
                     key,
@@ -351,7 +407,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
             writer,
         };
         match self.entries.get(&key) {
-            Some(existing) if existing.stamp >= stamp => {}
+            Some(existing) if existing.rank() >= rank_of(&stamp, value.is_some()) => {}
             _ => {
                 self.entries.insert(key, Entry { value, stamp });
             }
@@ -430,7 +486,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
         let mut result = self.clone();
         for (key, other_entry) in other.entries.iter() {
             match result.entries.get(key) {
-                Some(existing) if existing.stamp >= other_entry.stamp => {}
+                Some(existing) if existing.rank() >= other_entry.rank() => {}
                 _ => {
                     result.entries.insert(key.clone(), other_entry.clone());
                 }
@@ -480,7 +536,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
                     // delivering the same update twice). Not a conflict.
                 }
                 Some(existing) => {
-                    let kept_remote = other_entry.stamp > existing.stamp;
+                    let kept_remote = other_entry.rank() > existing.rank();
                     conflicts.push(MergeConflict {
                         key: key.clone(),
                         local_generation: existing.stamp.generation,
@@ -1194,5 +1250,86 @@ mod tests {
             2,
         );
         assert_eq!(existing.get(&"x".to_string()), Some(&"newer".to_string()));
+    }
+
+    fn with_add_wins<R>(f: impl FnOnce() -> R) -> R {
+        TEST_ADD_WINS.with(|c| c.set(Some(true)));
+        let r = f();
+        TEST_ADD_WINS.with(|c| c.set(None));
+        r
+    }
+
+    #[test]
+    fn by_default_a_delete_beats_a_later_add_of_the_same_life() {
+        let mut a: LwwMap<String, String> = LwwMap::new();
+        a.set("x".to_string(), "v1".to_string(), LamportTime(1), 1);
+        let mut b = a.clone();
+        a.remove("x".to_string(), LamportTime(2), 1);
+        b.set("x".to_string(), "v2".to_string(), LamportTime(9), 2);
+        assert_eq!(a.merge(&b).get(&"x".to_string()), None);
+        assert_eq!(b.merge(&a).get(&"x".to_string()), None);
+    }
+
+    #[test]
+    fn with_add_wins_a_concurrent_add_survives_the_delete() {
+        with_add_wins(|| {
+            let mut a: LwwMap<String, String> = LwwMap::new();
+            a.set("x".to_string(), "v1".to_string(), LamportTime(1), 1);
+            let mut b = a.clone();
+            a.remove("x".to_string(), LamportTime(2), 1);
+            b.set("x".to_string(), "v2".to_string(), LamportTime(9), 2);
+            assert_eq!(a.merge(&b).get(&"x".to_string()), Some(&"v2".to_string()));
+            assert_eq!(b.merge(&a).get(&"x".to_string()), Some(&"v2".to_string()));
+        });
+    }
+
+    #[test]
+    fn with_add_wins_a_delete_after_the_add_still_removes_the_key() {
+        with_add_wins(|| {
+            let mut a: LwwMap<String, String> = LwwMap::new();
+            a.set("x".to_string(), "v1".to_string(), LamportTime(1), 1);
+            let mut b = a.clone();
+            b.set("x".to_string(), "v2".to_string(), LamportTime(3), 2);
+            a.remove("x".to_string(), LamportTime(5), 1);
+            assert_eq!(a.merge(&b).get(&"x".to_string()), None);
+            assert_eq!(b.merge(&a).get(&"x".to_string()), None);
+        });
+    }
+
+    #[test]
+    fn with_add_wins_a_stale_add_of_an_earlier_life_does_not_resurrect_the_key() {
+        with_add_wins(|| {
+            let mut a: LwwMap<String, String> = LwwMap::new();
+            a.set("x".to_string(), "v1".to_string(), LamportTime(1), 1);
+            let stale = a.clone();
+            a.remove("x".to_string(), LamportTime(2), 1);
+            a.set("x".to_string(), "v3".to_string(), LamportTime(3), 1);
+            a.remove("x".to_string(), LamportTime(4), 1);
+            let mut late = stale.clone();
+            late.set("x".to_string(), "late".to_string(), LamportTime(99), 2);
+            // the stale add belongs to life 1; the tombstone ended life 3
+            assert_eq!(a.merge(&late).get(&"x".to_string()), None);
+        });
+    }
+
+    #[test]
+    fn with_add_wins_the_merge_laws_still_hold_over_deletes_and_adds() {
+        with_add_wins(|| {
+            let mut base: LwwMap<String, i32> = LwwMap::new();
+            base.set("k".to_string(), 0, LamportTime(1), 1);
+            let mut a = base.clone();
+            a.remove("k".to_string(), LamportTime(2), 1);
+            let mut b = base.clone();
+            b.set("k".to_string(), 7, LamportTime(5), 2);
+            let mut c = base.clone();
+            c.remove("k".to_string(), LamportTime(6), 3);
+            let ab_c = a.merge(&b).merge(&c);
+            let a_bc = a.merge(&b.merge(&c));
+            assert!(ab_c.same_visible_state(&a_bc));
+            assert!(a.merge(&b).same_visible_state(&b.merge(&a)));
+            assert!(c.merge(&a).same_visible_state(&a.merge(&c)));
+            let once = a.merge(&b);
+            assert!(once.merge(&once).same_visible_state(&once));
+        });
     }
 }

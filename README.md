@@ -131,6 +131,7 @@ flowchart TD
 | `SWARM_SYNC_SHARED_SECRET` | none | shared secret that a network node requires from callers and sends to peers |
 | `--max-time-jump` | `1000000` | how far past the newest time a request may write |
 | `--max-generation-jump` | `1000` | how far past a key's generation an entry may be |
+| `--presence` | `delete-wins` | how a delete and a concurrent add of the same key are resolved: `delete-wins` or `add-wins` (every node of a swarm must use the same) |
 | `--peer URL`, `--gossip-interval-ms`, `--gossip-push` | off; at least 1000 ms between rounds, 10000 by default | peers to ask for their state, the pause between rounds, and whether to push back |
 
 ## 🚀 Quick start

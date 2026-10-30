@@ -67,3 +67,15 @@ fn gossip_settings_that_cannot_be_used_stop_the_start() {
         );
     }
 }
+
+#[test]
+fn a_presence_policy_that_does_not_exist_stops_the_start() {
+    let output = Command::new(env!("CARGO_BIN_EXE_hydra-umc-swarm-sync"))
+        .args(["serve", "--port", "0", "--presence", "whatever"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("the binary must run");
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("--presence"), "{stderr}");
+}

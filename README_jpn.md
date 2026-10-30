@@ -131,6 +131,7 @@ flowchart TD
 | `SWARM_SYNC_SHARED_SECRET` | なし | ネットワークノードが呼び出し側に要求し、ピアへ送る共有シークレット |
 | `--max-time-jump` | `1000000` | リクエストが最新時刻をどこまで超えて書き込めるか |
 | `--max-generation-jump` | `1000` | エントリがキーの世代をどこまで超えてよいか |
+| `--presence` | `delete-wins` | 同じキーの削除と同時の追加をどう解決するか：`delete-wins` または `add-wins`（スウォームの全ノードで同じ設定にすること） |
 | `--peer URL`, `--gossip-interval-ms`, `--gossip-push` | オフ。ラウンド間隔は 1000 ms 以上、既定は 10000 | 状態を尋ねるピア、ラウンド間の待ち時間、こちらの状態を送り返すか |
 
 ## 🚀 クイックスタート
