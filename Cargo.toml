@@ -25,3 +25,6 @@ serde_json = "1.0.151"
 # equivalent to Python's stdlib ThreadingHTTPServer, already used for
 # HYDRA-UMC-TWIN's own real internal-only API.
 tiny_http = "0.12"
+# The typed value of the keys `robot_state/<id>` (src/typed.rs): the same crate and version as the Rust client of the SDK, without its
+# network and TLS features - the schema is vendored, nothing is fetched.
+jsonschema = { version = "0.50", default-features = false }

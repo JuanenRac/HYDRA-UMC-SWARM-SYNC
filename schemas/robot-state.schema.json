@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://juanenrac.github.io/hydra-umc-sdk/contracts/v1/robot-state.schema.json",
+  "title": "RobotState", "type": "object",
+  "description": "What one robot reports about itself, in the form in which it is replicated between nodes: who it is, what it is doing, when this was true and where it is. A replicated copy is only as new as `updated_at_utc`.",
+  "required": ["schema_version", "robot_id", "state", "updated_at_utc"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "robot_id": {"type": "string", "minLength": 1},
+    "state": {"enum": ["idle", "busy", "estop", "fault", "offline"], "description": "estop and fault are never cleared by a replica: only the robot's own safety chain clears them."},
+    "source": {"enum": ["real", "simulated"]},
+    "updated_at_utc": {"type": "string", "format": "date-time"},
+    "mission_id": {"type": "string", "minLength": 1},
+    "battery_percent": {"type": "number", "minimum": 0, "maximum": 100},
+    "pose": {
+      "type": "object", "required": ["schema_version", "frame", "position", "orientation"],
+      "description": "A Pose contract payload; the unit length of its quaternion is checked by the clients, a schema cannot express it.",
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "frame": {"enum": ["base", "tool"]},
+        "position": {"type": "object", "required": ["x", "y", "z"], "additionalProperties": false, "properties": {"x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"}}},
+        "orientation": {"type": "object", "required": ["w", "x", "y", "z"], "additionalProperties": false, "properties": {"w": {"type": "number"}, "x": {"type": "number"}, "y": {"type": "number"}, "z": {"type": "number"}}}
+      }, "additionalProperties": true
+    }
+  }, "additionalProperties": true
+}

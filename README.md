@@ -110,6 +110,8 @@ flowchart TD
 * **Why `merge_report()` is a new method instead of changing what `merge()` returns.** `merge()` stays a pure, cheap, obviously-correct black box - that simplicity is what makes it easy to trust. `merge_report()` layers real conflict visibility on top for a caller (an operator, a debugging tool) that specifically wants to know what a reconciliation overwrote, without forcing every caller of the hot-path `merge()` to pay for or handle that bookkeeping.
 * **Why conflict reports show stamp order, not causal "happened-before".** A Lamport clock guarantees that true causal happens-before implies an earlier stamp - but the converse doesn't hold: an earlier stamp does NOT prove two events were causally related rather than merely concurrent. `MergeConflict` is deliberately honest about reporting only what a Lamport clock can actually prove (a consistent total order), not a causality claim a vector clock would be needed to make.
 
+**Typed robot state.** What a node replicates under the key `robot_state/<robot_id>` is a `RobotState` of the SDK, not a free string: before it touches the map (`POST /reconcile` and `POST /merge`) the value must be JSON, pass the vendored schema (Draft 2020-12, formats checked), carry the `robot_id` of the key and a unit-length pose quaternion; otherwise the request is a `422`. A deletion is always accepted and every other key stays untyped. The missions are not typed yet.
+
 ## 🔒 Security & Safety
 
 | Threat | Defence | Where |

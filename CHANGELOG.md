@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **The state of a robot is a typed value.** What is written under the key `robot_state/<robot_id>` (by `POST /reconcile` or received by `POST /merge`) has to be a `RobotState` of the SDK: JSON that passes the vendored schema, with the `robot_id` of the key and a pose quaternion of unit length; otherwise the request is a `422` and nothing is merged. Deletions and every other key are unchanged. The missions stay a pending item of the swarm contract.
 - **`GET /conflicts`:** the history of the conflicts a node resolved (key, winning writer, losing writer and time), newest first, up to the most recent 200 and with `?limit=N`; `/stats` kept only the last one. It needs the shared secret when one is set, like `/state`.
 - **README in the universal layout:** the README and its seven translations follow the layout that the four families share (22 sections in a fixed order), with an architecture picture and a repository-structure picture drawn from `docs/architecture.json` and `docs/structure.json`; the CI validator checks both pictures and the file tree.
 

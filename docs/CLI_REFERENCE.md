@@ -250,6 +250,10 @@ property itself — commutative, associative, and idempotent — on a
 concrete multi-cell scenario, whether driven by a local file or a network
 request.
 
+## Typed values: the state of a robot
+
+The map keeps strings, but what is written under the key `robot_state/<robot_id>` is a `RobotState` of the SDK (`robot-state.schema.json`, vendored under `schemas/`): `schema_version` `1.0`, `robot_id`, `state` (`idle`, `busy`, `estop`, `fault` or `offline`), `updated_at_utc` and, optionally, `source`, `mission_id`, `battery_percent` and a `pose`. Before a value touches the map, in `POST /reconcile` and in `POST /merge` alike, it must be JSON, pass the schema (Draft 2020-12, formats checked), carry the `robot_id` of its key and, when it has a pose, a quaternion of unit length. Otherwise the whole request is a `422` naming the key and the reason, and nothing is merged. A deletion (a tombstone) is always accepted and every key that does not start with `robot_state/` stays untyped. The missions are not typed yet.
+
 ## Exchanging state with other nodes
 
 | Flag | Meaning |

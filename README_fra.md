@@ -110,6 +110,8 @@ flowchart TD
 * **Pourquoi `merge_report()` est une nouvelle méthode plutôt qu'un changement de ce que renvoie `merge()`.** `merge()` reste une boîte noire pure, bon marché et manifestement correcte - cette simplicité est ce qui la rend facile à faire confiance. `merge_report()` ajoute par-dessus une réelle visibilité des conflits pour un appelant (un opérateur, un outil de débogage) qui veut spécifiquement savoir ce qu'une réconciliation a écrasé, sans forcer chaque appelant du chemin critique `merge()` à payer pour cette comptabilité ou à la gérer.
 * **Pourquoi les rapports de conflit montrent l'ordre des horodatages, pas un « happened-before » causal.** Une horloge de Lamport garantit qu'un véritable happens-before causal implique un horodatage antérieur - mais l'inverse n'est pas vrai : un horodatage antérieur ne prouve PAS que deux événements étaient causalement liés plutôt que simplement concurrents. `MergeConflict` est délibérément honnête et ne rapporte que ce qu'une horloge de Lamport peut réellement prouver (un ordre total cohérent), pas une affirmation de causalité qui nécessiterait une horloge vectorielle.
 
+**État de robot typé.** Ce qu'un nœud réplique sous la clé `robot_state/<robot_id>` est un `RobotState` du SDK, pas une chaîne libre : avant de toucher la table (`POST /reconcile` et `POST /merge`), la valeur doit être du JSON, respecter le schéma embarqué (Draft 2020-12, formats vérifiés), porter le `robot_id` de la clé et un quaternion de pose de longueur 1 ; sinon la requête reçoit un `422`. Une suppression est toujours acceptée et toute autre clé reste non typée. Les missions ne sont pas encore typées.
+
 ## 🔒 Sécurité et protection
 
 | Menace | Défense | Où |

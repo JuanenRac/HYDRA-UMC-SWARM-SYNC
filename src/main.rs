@@ -27,6 +27,7 @@ mod lamport;
 mod reconcile;
 mod server;
 mod store;
+mod typed;
 
 use reconcile::{reconcile, Scenario};
 use std::env;

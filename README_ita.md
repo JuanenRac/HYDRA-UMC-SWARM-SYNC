@@ -110,6 +110,8 @@ flowchart TD
 * **Perché `merge_report()` è un nuovo metodo invece di cambiare cosa restituisce `merge()`.** `merge()` resta una scatola nera pura, economica e ovviamente corretta - questa semplicità è ciò che la rende facile da fidarsi. `merge_report()` aggiunge sopra una reale visibilità dei conflitti per un chiamante (un operatore, uno strumento di debug) che vuole specificamente sapere cosa ha sovrascritto una riconciliazione, senza costringere ogni chiamante del percorso critico `merge()` a pagare per quella contabilità o a gestirla.
 * **Perché i report di conflitto mostrano l'ordine dei timestamp, non un "happened-before" causale.** Un orologio di Lamport garantisce che un vero happens-before causale implichi un timestamp precedente - ma il contrario non è vero: un timestamp precedente NON dimostra che due eventi fossero causalmente correlati anziché semplicemente concorrenti. `MergeConflict` è deliberatamente onesto e riporta solo ciò che un orologio di Lamport può realmente dimostrare (un ordine totale coerente), non un'affermazione di causalità che richiederebbe un orologio vettoriale.
 
+**Stato del robot tipizzato.** Ciò che un nodo replica sotto la chiave `robot_state/<robot_id>` è un `RobotState` dell'SDK e non una stringa libera: prima di toccare la mappa (`POST /reconcile` e `POST /merge`) il valore deve essere JSON, rispettare lo schema incluso (Draft 2020-12, formati verificati), portare il `robot_id` della chiave e un quaternione di posa di lunghezza unitaria; altrimenti la richiesta riceve un `422`. Una cancellazione è sempre accettata e ogni altra chiave resta non tipizzata. Le missioni non sono ancora tipizzate.
+
 ## 🔒 Sicurezza e protezione
 
 | Minaccia | Difesa | Dove |

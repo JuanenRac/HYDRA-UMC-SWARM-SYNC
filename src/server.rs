@@ -514,6 +514,16 @@ fn reconcile_request(shared: &Shared, scenario: &Scenario) -> (u16, serde_json::
     if let Err(e) = check_stamps(scenario, state.max_time(), shared.max_time_jump) {
         return error_response(&e);
     }
+    for cell in &scenario.cells {
+        for write in cell.writes.iter().filter(|w| !w.deleted) {
+            if let Err(reason) = crate::typed::check_value(&write.key, &write.value) {
+                return error_response(&ReconcileError::InvalidEntry {
+                    key: write.key.chars().take(64).collect(),
+                    reason,
+                });
+            }
+        }
+    }
     match reconcile_with_prior(scenario, state.clone()) {
         Ok((output, merged)) => {
             // Persist BEFORE responding success - a caller told "200
@@ -999,6 +1009,50 @@ mod tests {
         );
         let (_, body) = get(port, "/state");
         assert!(body.contains("\"x\":\"1\""));
+    }
+
+    const ROBOT_STATE: &str = r#"{"schema_version": "1.0", "robot_id": "arm-1", "state": "busy", "updated_at_utc": "2024-01-01T00:00:00Z"}"#;
+
+    fn robot_state_scenario(key: &str, value: &str, time: u64) -> String {
+        json!({"cells": [{"id": "cell-a", "writer": 1, "writes": [{"key": key, "value": value, "time": time}]}]}).to_string()
+    }
+
+    #[test]
+    fn a_robot_state_is_replicated_as_a_typed_value_and_a_free_string_under_its_key_is_refused() {
+        let port = start_test_server();
+        let (status, _) = post(port, "/reconcile", &robot_state_scenario("robot_state/arm-1", ROBOT_STATE, 1));
+        assert_eq!(status, 200);
+        let (_, body) = get(port, "/state");
+        assert!(body.contains("robot_state/arm-1") && body.contains("busy"), "{body}");
+
+        for (key, value) in [
+            ("robot_state/arm-1", "estop-cleared"),
+            ("robot_state/arm-1", r#"{"schema_version": "1.0", "robot_id": "arm-1", "state": "sleeping", "updated_at_utc": "2024-01-01T00:00:00Z"}"#),
+            ("robot_state/arm-2", ROBOT_STATE),
+        ] {
+            let (status, body) = post(port, "/reconcile", &robot_state_scenario(key, value, 2));
+            assert_eq!(status, 422, "{key} = {value}: {body}");
+            assert!(body.contains("robot state"), "{body}");
+        }
+        // other keys stay untyped, and nothing the refusals carried reached the map
+        assert_eq!(post(port, "/reconcile", &robot_state_scenario("robot-1", "estop-cleared", 3)).0, 200);
+        let (_, body) = get(port, "/state");
+        assert!(!body.contains("sleeping") && body.contains("estop-cleared"), "{body}");
+    }
+
+    #[test]
+    fn a_robot_state_that_arrives_from_a_peer_is_checked_before_it_is_merged() {
+        let port = start_test_server();
+        let entry = |value: &str| {
+            json!({"entries": [{"key": "robot_state/arm-1", "value": value, "time": 1, "writer": 2, "generation": 1}]}).to_string()
+        };
+        assert_eq!(post(port, "/merge", &entry("estop-cleared")).0, 422);
+        assert_eq!(post(port, "/merge", &entry(ROBOT_STATE)).0, 200);
+        let (_, body) = get(port, "/state");
+        assert!(body.contains("robot_state/arm-1"), "{body}");
+        // a tombstone has no value and is always accepted
+        let tombstone = json!({"entries": [{"key": "robot_state/arm-1", "value": null, "time": 2, "writer": 2, "generation": 2}]}).to_string();
+        assert_eq!(post(port, "/merge", &tombstone).0, 200);
     }
 
     // The real point of this whole pass: a SECOND /reconcile call must
