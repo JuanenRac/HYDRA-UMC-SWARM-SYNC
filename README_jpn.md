@@ -17,7 +17,7 @@ GPL-3.0-or-later - see LICENSE
 <p align="center">
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="Protocol">
-  <img src="https://img.shields.io/badge/Tests-102%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-105%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.1.5-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -34,7 +34,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | バージョン | `0.1.5` |
 | 成熟度 | 機能する |
-| テスト | 102 (`cargo test`) |
+| テスト | 105 (`cargo test`) |
 | 技術 | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
 | 対象 | HYDRA-UMC セルの Raspberry Pi CM5 |
 | 実機での確認 | まだです：このバージョンについて実機での動作記録はありません |
@@ -50,7 +50,7 @@ GPL-3.0-or-later - see LICENSE
 | 領域 | 状態 | ここでの意味 |
 |---|---|---|
 | ソフトウェア | 🟡 | 主な目的では動作します。足りない点は上の正直さの確認に書かれています |
-| テスト | 🟢 | 自動テスト 102 件。変更のたびに実行されます |
+| テスト | 🟢 | 自動テスト 105 件。変更のたびに実行されます |
 | 実機 | 🔴 | まだです：このバージョンについて実機での動作記録はありません |
 | ドキュメント | 🟢 | 8 言語の README。変更のたびにマニフェストと照合されます |
 
@@ -142,7 +142,7 @@ flowchart TD
 
 ## 🧪 テスト
 
-`cargo test` で自動テスト 102 件を実行します。 ハードウェアも、このマシンの外にあるものも必要ありません。
+`cargo test` で自動テスト 105 件を実行します。 ハードウェアも、このマシンの外にあるものも必要ありません。
 
 CI は `HYDRA_UMC_CI=1 python tools/ci_validate.py` を実行し、マニフェスト、文書、8 つの README、図を検査します。
 

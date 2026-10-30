@@ -17,7 +17,7 @@ GPL-3.0-or-later - see LICENSE
 <p align="center">
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="Protocol">
-  <img src="https://img.shields.io/badge/Tests-102%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-105%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.1.5-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -34,7 +34,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Version | `0.1.5` |
 | Maturité | Fonctionnel |
-| Tests | 102 (`cargo test`) |
+| Tests | 105 (`cargo test`) |
 | Technologie | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
 | Cible | Le Raspberry Pi CM5 d'une cellule HYDRA-UMC |
 | Sur matériel réel | Pas encore : aucune exécution sur du matériel réel n'est consignée pour cette version |
@@ -50,7 +50,7 @@ Chaque ligne est une partie de ce dépôt et le feu dit où elle en est aujourd'
 | Domaine | État | Ce que cela veut dire ici |
 |---|---|---|
 | Logiciel | 🟡 | Fonctionne pour son usage principal ; la vérification d'honnêteté ci-dessus liste ce qui manque encore |
-| Tests | 🟢 | 102 tests automatiques, exécutés à chaque modification |
+| Tests | 🟢 | 105 tests automatiques, exécutés à chaque modification |
 | Matériel réel | 🔴 | Pas encore : aucune exécution sur du matériel réel n'est consignée pour cette version |
 | Documentation | 🟢 | README en huit langues, vérifié par rapport au manifeste à chaque modification |
 
@@ -142,7 +142,7 @@ Nécessite la chaîne d'outils Rust stable (édition 2021) avec `cargo`.
 
 ## 🧪 Tests
 
-102 tests automatiques s'exécutent avec `cargo test`. Ils n'ont besoin ni de matériel ni de rien en dehors de cette machine.
+105 tests automatiques s'exécutent avec `cargo test`. Ils n'ont besoin ni de matériel ni de rien en dehors de cette machine.
 
 La CI exécute `HYDRA_UMC_CI=1 python tools/ci_validate.py`, qui vérifie le manifeste, les documents, les huit README et les images.
 
@@ -204,7 +204,7 @@ cargo test   # l'horloge de Lamport, et le CRDT lui-meme - avec des
              # propre de detection de conflits de merge_report(), et une
              # simulation a 4 cellules prouvant la convergence sur
              # plusieurs cycles de partition et reconnexion partielle -
-             # 102 tests au total
+             # 105 tests au total
 ```
 
 Le même appel à `reconcile()` est aussi accessible via une véritable API

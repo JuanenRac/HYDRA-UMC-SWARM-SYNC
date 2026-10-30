@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **`GET /conflicts`:** the history of the conflicts a node resolved (key, winning writer, losing writer and time), newest first, up to the most recent 200 and with `?limit=N`; `/stats` kept only the last one. It needs the shared secret when one is set, like `/state`.
 - **README in the universal layout:** the README and its seven translations follow the layout that the four families share (22 sections in a fixed order), with an architecture picture and a repository-structure picture drawn from `docs/architecture.json` and `docs/structure.json`; the CI validator checks both pictures and the file tree.
 
 - **The layout of the README is checked in the CI:** the validator runs `tools/universal_readme_check.py` and lists, as a warning, what differs from the universal layout of the README.

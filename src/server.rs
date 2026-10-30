@@ -29,7 +29,7 @@ use std::thread;
 use serde_json::json;
 use tiny_http::{Header, Method, Response, Server};
 
-use crate::crdt::LwwMap;
+use crate::crdt::{LwwMap, MergeConflict};
 use crate::entries::{
     check_entries, merge_entries, state_entries, MergeRequest, StampedEntry,
     DEFAULT_MAX_GENERATION_JUMP,
@@ -167,7 +167,14 @@ struct SyncEvidence {
     conflicts_total: u64,
     last_reconcile_ms: Option<u64>,
     last_conflict: Option<serde_json::Value>,
+    /// The most recent conflicts that were resolved, oldest first, at most
+    /// `CONFLICT_HISTORY` of them (`GET /conflicts`).
+    history: std::collections::VecDeque<serde_json::Value>,
 }
+
+/// How many resolved conflicts a node remembers; older ones are forgotten
+/// first, `conflictsResolved` keeps counting all of them.
+const CONFLICT_HISTORY: usize = 200;
 
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
@@ -177,6 +184,43 @@ fn now_ms() -> u64 {
 }
 
 impl SyncEvidence {
+    /// Remembers every conflict a reconcile or a merge resolved: the key, the
+    /// writer whose value was kept and the writer whose value was dropped.
+    fn record_conflicts(&mut self, conflicts: &[MergeConflict<String, String>], at_ms: u64) {
+        for conflict in conflicts {
+            let (winner, loser) = if conflict.kept_remote {
+                (conflict.remote_writer, conflict.local_writer)
+            } else {
+                (conflict.local_writer, conflict.remote_writer)
+            };
+            let entry = json!({
+                "key": conflict.key,
+                "winnerWriter": winner,
+                "loserWriter": loser,
+                "atMs": at_ms,
+            });
+            self.last_conflict = Some(json!({
+                "key": conflict.key,
+                "winnerWriter": winner,
+                "loserWriter": loser,
+            }));
+            if self.history.len() == CONFLICT_HISTORY {
+                self.history.pop_front();
+            }
+            self.history.push_back(entry);
+        }
+    }
+
+    /// The newest `limit` resolved conflicts, newest first.
+    fn conflicts_json(&self, limit: usize) -> serde_json::Value {
+        let newest: Vec<&serde_json::Value> = self.history.iter().rev().take(limit).collect();
+        json!({
+            "conflictsResolved": self.conflicts_total,
+            "remembered": self.history.len(),
+            "conflicts": newest,
+        })
+    }
+
     fn to_json(&self, now: u64) -> serde_json::Value {
         json!({
             "reconciles": self.reconciles,
@@ -339,6 +383,26 @@ fn serve(server: &Server, shared: &Shared) {
             );
             continue;
         }
+        if path == "/conflicts" && request.method() == &Method::Get {
+            if !is_authorized(&request, &shared.shared_secret) {
+                write_json(
+                    request,
+                    401,
+                    &json!({"error": "missing or invalid Authorization: Bearer <token>"}),
+                );
+                continue;
+            }
+            let limit = request
+                .url()
+                .split_once('?')
+                .and_then(|(_, q)| q.split('&').find_map(|p| p.strip_prefix("limit=")))
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(CONFLICT_HISTORY)
+                .clamp(1, CONFLICT_HISTORY);
+            let body = shared.evidence.lock().unwrap().conflicts_json(limit);
+            write_json(request, 200, &body);
+            continue;
+        }
         if path == "/state" && request.method() == &Method::Get {
             if !is_authorized(&request, &shared.shared_secret) {
                 write_json(
@@ -471,18 +535,8 @@ fn reconcile_request(shared: &Shared, scenario: &Scenario) -> (u16, serde_json::
             evidence.reconciles += 1;
             evidence.conflicts_total += output.conflicts_resolved as u64;
             evidence.last_reconcile_ms = Some(now_ms());
-            if let Some(conflict) = output.conflicts.last() {
-                let (winner, loser) = if conflict.kept_remote {
-                    (conflict.remote_writer, conflict.local_writer)
-                } else {
-                    (conflict.local_writer, conflict.remote_writer)
-                };
-                evidence.last_conflict = Some(json!({
-                    "key": conflict.key,
-                    "winnerWriter": winner,
-                    "loserWriter": loser,
-                }));
-            }
+            let at = now_ms();
+            evidence.record_conflicts(&output.conflicts, at);
             (200, serde_json::to_value(&output).unwrap())
         }
         Err(e) => error_response(&e),
@@ -516,16 +570,8 @@ fn merge_request(shared: &Shared, entries: &[StampedEntry]) -> (u16, serde_json:
             evidence.merges += 1;
             evidence.conflicts_total += output.conflicts_resolved as u64;
             evidence.last_reconcile_ms = Some(now_ms());
-            if let Some(conflict) = output.conflicts.last() {
-                let (winner, loser) = if conflict.kept_remote {
-                    (conflict.remote_writer, conflict.local_writer)
-                } else {
-                    (conflict.local_writer, conflict.remote_writer)
-                };
-                evidence.last_conflict = Some(
-                    json!({"key": conflict.key, "winnerWriter": winner, "loserWriter": loser}),
-                );
-            }
+            let at = now_ms();
+            evidence.record_conflicts(&output.conflicts, at);
             (200, serde_json::to_value(&output).unwrap())
         }
         Err(e) => error_response(&e),
@@ -738,6 +784,79 @@ mod tests {
         assert_eq!(stats["sync"]["lastConflict"]["winnerWriter"], 1);
         assert_eq!(stats["sync"]["lastConflict"]["loserWriter"], 2);
         assert!(stats["sync"]["lastReconcileAgeMs"].as_u64().is_some());
+    }
+
+    #[test]
+    fn conflicts_route_lists_every_resolved_conflict_newest_first() {
+        let port = start_test_server();
+        let (status, empty) = get(port, "/conflicts");
+        assert_eq!(status, 200);
+        let empty: serde_json::Value = serde_json::from_str(&empty).unwrap();
+        assert_eq!(empty["conflicts"].as_array().unwrap().len(), 0);
+        let scenario = r#"{"cells": [
+            {"id": "cell-a", "writer": 1, "writes": [{"key": "x", "value": "a", "time": 5}, {"key": "y", "value": "a", "time": 1}]},
+            {"id": "cell-b", "writer": 2, "writes": [{"key": "x", "value": "b", "time": 1}, {"key": "y", "value": "b", "time": 9}]}
+        ]}"#;
+        assert_eq!(post(port, "/reconcile", scenario).0, 200);
+        let (_, body) = get(port, "/conflicts");
+        let history: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(history["conflictsResolved"], 2);
+        assert_eq!(history["remembered"], 2);
+        let list = history["conflicts"].as_array().unwrap();
+        assert_eq!(list.len(), 2);
+        let keys: Vec<&str> = list.iter().map(|c| c["key"].as_str().unwrap()).collect();
+        assert!(keys.contains(&"x") && keys.contains(&"y"), "{body}");
+        for conflict in list {
+            assert!(conflict["atMs"].as_u64().is_some());
+            let (winner, loser) = match conflict["key"].as_str().unwrap() {
+                "x" => (1, 2),
+                _ => (2, 1),
+            };
+            assert_eq!(conflict["winnerWriter"], winner);
+            assert_eq!(conflict["loserWriter"], loser);
+        }
+        let (_, limited) = get(port, "/conflicts?limit=1");
+        let limited: serde_json::Value = serde_json::from_str(&limited).unwrap();
+        assert_eq!(limited["conflicts"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn conflict_history_is_bounded_and_drops_the_oldest() {
+        let mut evidence = SyncEvidence::default();
+        for i in 0..(CONFLICT_HISTORY + 5) {
+            let conflict = MergeConflict {
+                key: format!("k{i}"),
+                local_generation: 0,
+                local_time: crate::lamport::LamportTime(2),
+                local_writer: 1,
+                local_value: Some("a".to_string()),
+                remote_generation: 0,
+                remote_time: crate::lamport::LamportTime(1),
+                remote_writer: 2,
+                remote_value: Some("b".to_string()),
+                kept_remote: false,
+            };
+            evidence.conflicts_total += 1;
+            evidence.record_conflicts(&[conflict], i as u64);
+        }
+        let body = evidence.conflicts_json(CONFLICT_HISTORY);
+        assert_eq!(body["remembered"], CONFLICT_HISTORY);
+        assert_eq!(body["conflictsResolved"], CONFLICT_HISTORY + 5);
+        assert_eq!(
+            body["conflicts"][0]["key"],
+            format!("k{}", CONFLICT_HISTORY + 4)
+        );
+        assert_eq!(body["conflicts"][CONFLICT_HISTORY - 1]["key"], "k5");
+    }
+
+    #[test]
+    fn conflicts_route_needs_the_shared_secret_when_one_is_set() {
+        let port = start_test_server_full(None, Some("conflicts-secret-0123456789".to_string()));
+        assert_eq!(get(port, "/conflicts").0, 401);
+        assert_eq!(
+            get_with_auth(port, "/conflicts", Some("conflicts-secret-0123456789")).0,
+            200
+        );
     }
 
     #[test]

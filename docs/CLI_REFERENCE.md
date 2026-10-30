@@ -167,7 +167,7 @@ of `src/main.rs` documents as a deliberately deferred design decision.
 ```
 $ hydra-umc-swarm-sync serve --port 8112 --state-file /opt/hydra-umc/swarm-sync/data/state.json
 [swarm-sync] HTTP API listening on 127.0.0.1:8112
-[swarm-sync] POST /reconcile, GET /stats, GET /state, GET /health
+[swarm-sync] POST /reconcile, GET /stats, GET /state, GET /conflicts, GET /health
 [swarm-sync] persisting this node's own state to "/opt/hydra-umc/swarm-sync/data/state.json"
 ```
 
@@ -198,6 +198,7 @@ until killed; there is no separate "stop" command.
 | `/reconcile` | `POST` | Body is a scenario JSON (same shape as `<scenario.json>` above), merged into this node's own current state (empty if `--state-file` is unset, or nothing has been reconciled yet). Returns `200` with the same `ReconcileOutput` JSON the CLI prints on success; `400` with `{"error": "..."}` on a malformed body, a scenario with zero cells or an impossible conflict inside it; `409` when the node's own Lamport clock cannot advance; `413` for a body over 1 MiB; `422` when a write carries a Lamport `time` more than `--max-time-jump` (default 1000000) past the newest time already in the state; or `500` if the scenario merged successfully but `--state-file` itself could not be written. |
 | `/stats` | `GET` | Returns `200` with `{"role": "CRDT swarm state reconciliation", "persistent": true\|false, "sync": {...}}` — `persistent` reflects whether `--state-file` is configured. Open, whatever the secret. |
 | `/health` | `GET` | Returns `200` with `{"status": "ok", "name": "HYDRA-UMC-SWARM-SYNC", "version": ...}`. Open, whatever the secret, for a watchdog. |
+| `/conflicts` | `GET` | Returns `200` with `{"conflictsResolved": n, "remembered": m, "conflicts": [{"key", "winnerWriter", "loserWriter", "atMs"}, ...]}`: the conflicts this node resolved while it reconciled or merged, newest first, so an operator can see which write lost and whose it was (`/stats` only shows the last one). A node remembers the most recent 200 (`remembered`); `conflictsResolved` keeps counting all of them. `?limit=N` returns only the newest N (1 to 200). It names keys, so it needs the shared secret like `/state`. |
 | `/state` | `GET` | Returns `200` with this node's own current merged state as a plain `{"key": "value", ...}` object (no stamps/history) — real, direct visibility into what every past `/reconcile` call has accumulated. |
 | anything else | any | Returns `404` with `{"error": "not found"}`. |
 

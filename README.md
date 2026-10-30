@@ -17,7 +17,7 @@ GPL-3.0-or-later - see LICENSE
 <p align="center">
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="Protocol">
-  <img src="https://img.shields.io/badge/Tests-102%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-105%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.1.5-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -34,7 +34,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Version | `0.1.5` |
 | Maturity | Functional |
-| Tests | 102 (`cargo test`) |
+| Tests | 105 (`cargo test`) |
 | Stack | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
 | Target | The Raspberry Pi CM5 of a HYDRA-UMC cell |
 | On real hardware | Not yet: no run on real hardware is recorded for this version |
@@ -50,7 +50,7 @@ Each line is one part of this repository and the light says how far it is today.
 | Area | State | What it means here |
 |---|---|---|
 | Software | 🟡 | Works for its main purpose; the honesty check above lists what is still missing |
-| Tests | 🟢 | 102 automated tests, run on every change |
+| Tests | 🟢 | 105 automated tests, run on every change |
 | Real hardware | 🔴 | Not yet: no run on real hardware is recorded for this version |
 | Documentation | 🟢 | README in eight languages, checked against the manifest on every change |
 
@@ -142,7 +142,7 @@ Requires the stable Rust toolchain (edition 2021) with `cargo`.
 
 ## 🧪 Testing
 
-102 automated tests run with `cargo test`. They need no hardware and nothing outside this machine.
+105 automated tests run with `cargo test`. They need no hardware and nothing outside this machine.
 
 The CI runs `HYDRA_UMC_CI=1 python tools/ci_validate.py`, which checks the manifest, the documents, the eight READMEs and the pictures.
 
@@ -200,7 +200,7 @@ cargo test   # the Lamport clock, and the CRDT itself - including direct
              # deterministic-tie-break test for truly concurrent writes,
              # merge_report()'s own conflict-detection behavior, and a
              # 4-cell simulation proving convergence across multiple
-             # rounds of partition and partial reconnection - 102 tests total
+             # rounds of partition and partial reconnection - 105 tests total
 ```
 
 The same `reconcile()` call is also reachable over a real JSON/HTTP API

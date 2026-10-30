@@ -17,7 +17,7 @@ GPL-3.0-or-later - see LICENSE
 <p align="center">
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="Protocol">
-  <img src="https://img.shields.io/badge/Tests-102%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-105%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.1.5-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -34,7 +34,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Version | `0.1.5` |
 | Reifegrad | Funktionsfähig |
-| Tests | 102 (`cargo test`) |
+| Tests | 105 (`cargo test`) |
 | Technik | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
 | Ziel | Der Raspberry Pi CM5 einer HYDRA-UMC-Zelle |
 | Auf echter Hardware | Noch nicht: für diese Version ist kein Lauf auf echter Hardware vermerkt |
@@ -50,7 +50,7 @@ Jede Zeile ist ein Teil dieses Repositorys, und die Ampel sagt, wie weit er heut
 | Bereich | Stand | Was das hier bedeutet |
 |---|---|---|
 | Software | 🟡 | Funktioniert für seinen Hauptzweck; die Ehrlichkeitsprüfung oben nennt, was noch fehlt |
-| Tests | 🟢 | 102 automatische Tests, bei jeder Änderung ausgeführt |
+| Tests | 🟢 | 105 automatische Tests, bei jeder Änderung ausgeführt |
 | Echte Hardware | 🔴 | Noch nicht: für diese Version ist kein Lauf auf echter Hardware vermerkt |
 | Dokumentation | 🟢 | README in acht Sprachen, bei jeder Änderung gegen das Manifest geprüft |
 
@@ -142,7 +142,7 @@ Benötigt die stabile Rust-Toolchain (Edition 2021) mit `cargo`.
 
 ## 🧪 Tests
 
-102 automatische Tests laufen mit `cargo test`. Sie brauchen weder Hardware noch etwas außerhalb dieses Rechners.
+105 automatische Tests laufen mit `cargo test`. Sie brauchen weder Hardware noch etwas außerhalb dieses Rechners.
 
 Die CI führt `HYDRA_UMC_CI=1 python tools/ci_validate.py` aus; das prüft das Manifest, die Dokumente, die acht READMEs und die Bilder.
 
@@ -205,7 +205,7 @@ cargo test   # die Lamport-Uhr, und den CRDT selbst - einschließlich
              # Konflikterkennungsverhaltens von merge_report(), und einer
              # 4-Zellen-Simulation, die Konvergenz über mehrere Runden von
              # Partitionierung und teilweiser Wiederverbindung beweist -
-             # 102 Tests insgesamt
+             # 105 Tests insgesamt
 ```
 
 Derselbe Aufruf von `reconcile()` ist außerdem über eine echte JSON/HTTP-API
