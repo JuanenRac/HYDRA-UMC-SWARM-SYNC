@@ -143,7 +143,9 @@ fn run_serve(args: &[String]) -> ExitCode {
     match server::bind(&bind_addr) {
         Ok(bound) => {
             eprintln!("[swarm-sync] HTTP API listening on {bind_addr}");
-            eprintln!("[swarm-sync] POST /reconcile, GET /stats, GET /state, GET /conflicts, GET /health");
+            eprintln!(
+                "[swarm-sync] POST /reconcile, GET /stats, GET /state, GET /conflicts, GET /health"
+            );
             match &state_path {
                 Some(path) => eprintln!("[swarm-sync] persisting this node's own state to {path:?}"),
                 None => eprintln!(
