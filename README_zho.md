@@ -242,6 +242,7 @@ HYDRA-UMC-SWARM-SYNC/
 │   └── store.rs               真实的、可选的按节点持久化(--state-file):抗崩溃的 JSON 状态文件
 ├── scenarios/                 示例场景
 ├── tests/                     startup.rs: 状态文件不可读、最大时间跳变无效或 gossip 设置不可用时,程序拒绝启动
+├── schemas/                   随附的 SDK 契约 JSON 模式
 ├── docs/                      项目文档
 ├── images/                    横幅和 README 的图片
 ├── systemd/                   服务单元

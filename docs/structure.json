@@ -290,6 +290,29 @@
           }
         },
         {
+          "name": "schemas/",
+          "desc": {
+            "en": "vendored JSON Schemas of the SDK contracts",
+            "es": "esquemas JSON de los contratos del SDK incluidos",
+            "de": "mitgelieferte JSON-Schemas der SDK-Verträge",
+            "fr": "schémas JSON des contrats du SDK embarqués",
+            "it": "schemi JSON dei contratti dell'SDK inclusi",
+            "ja": "同梱した SDK 契約の JSON スキーマ",
+            "zh": "随附的 SDK 契约 JSON 模式",
+            "pt": "esquemas JSON dos contratos do SDK incluídos"
+          },
+          "tree_desc": {
+            "en": "vendored JSON Schemas of the SDK contracts",
+            "es": "esquemas JSON de los contratos del SDK incluidos",
+            "de": "mitgelieferte JSON-Schemas der SDK-Verträge",
+            "fr": "schémas JSON des contrats du SDK embarqués",
+            "it": "schemi JSON dei contratti dell'SDK inclusi",
+            "ja": "同梱した SDK 契約の JSON スキーマ",
+            "zh": "随附的 SDK 契约 JSON 模式",
+            "pt": "esquemas JSON dos contratos do SDK incluídos"
+          }
+        },
+        {
           "name": "docs/",
           "desc": {
             "en": "documents of the project",

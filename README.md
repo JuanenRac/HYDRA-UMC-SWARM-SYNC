@@ -244,6 +244,7 @@ HYDRA-UMC-SWARM-SYNC/
 │   └── store.rs               Real opt-in per-node persistence (--state-file): a crash-safe JSON state file
 ├── scenarios/                 example scenarios
 ├── tests/                     startup.rs: the binary refuses to start on an unreadable state file, a bad max time jump or unusable gossip settings
+├── schemas/                   vendored JSON Schemas of the SDK contracts
 ├── docs/                      documents of the project
 ├── images/                    banner and the pictures of the README
 ├── systemd/                   service unit

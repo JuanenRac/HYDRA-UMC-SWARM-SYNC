@@ -248,6 +248,7 @@ HYDRA-UMC-SWARM-SYNC/
 │   └── store.rs               Persistencia real y opcional por nodo (--state-file): un fichero de estado JSON a prueba de fallos
 ├── scenarios/                 escenarios de ejemplo
 ├── tests/                     startup.rs: el binario se niega a arrancar con un fichero de estado ilegible, un salto máximo de tiempo erróneo o ajustes de gossip inservibles
+├── schemas/                   esquemas JSON de los contratos del SDK incluidos
 ├── docs/                      documentos del proyecto
 ├── images/                    banner e imágenes del README
 ├── systemd/                   unidad de servicio

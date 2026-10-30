@@ -247,6 +247,7 @@ HYDRA-UMC-SWARM-SYNC/
 │   └── store.rs               実際の任意のノードごとの永続化(--state-file):クラッシュ耐性のあるJSON状態ファイル
 ├── scenarios/                 シナリオの例
 ├── tests/                     startup.rs: 状態ファイルが読めない、最大時間ジャンプが不正、gossip 設定が使えない場合に起動を拒否する
+├── schemas/                   同梱した SDK 契約の JSON スキーマ
 ├── docs/                      プロジェクトの文書
 ├── images/                    バナーと README の図
 ├── systemd/                   サービスユニット

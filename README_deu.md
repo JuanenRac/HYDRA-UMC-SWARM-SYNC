@@ -250,6 +250,7 @@ HYDRA-UMC-SWARM-SYNC/
 │   └── store.rs               Echte optionale Persistenz pro Knoten (--state-file): eine absturzsichere JSON-Zustandsdatei
 ├── scenarios/                 Beispielszenarien
 ├── tests/                     startup.rs: das Programm verweigert den Start bei unlesbarer Zustandsdatei, ungültigem maximalem Zeitsprung oder unbrauchbaren Gossip-Einstellungen
+├── schemas/                   mitgelieferte JSON-Schemas der SDK-Verträge
 ├── docs/                      Dokumente des Projekts
 ├── images/                    Banner und Bilder der README
 ├── systemd/                   Dienst-Unit

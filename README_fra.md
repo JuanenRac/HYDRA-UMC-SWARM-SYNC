@@ -249,6 +249,7 @@ HYDRA-UMC-SWARM-SYNC/
 │   └── store.rs               Persistance réelle et optionnelle par nœud (--state-file) : un fichier d'état JSON résistant aux pannes
 ├── scenarios/                 scénarios d'exemple
 ├── tests/                     startup.rs : le binaire refuse de démarrer avec un fichier d'état illisible, un saut de temps maximal erroné ou des réglages de gossip inutilisables
+├── schemas/                   schémas JSON des contrats du SDK embarqués
 ├── docs/                      documents du projet
 ├── images/                    bannière et images du README
 ├── systemd/                   unité de service
