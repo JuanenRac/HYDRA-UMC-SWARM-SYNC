@@ -1,6 +1,6 @@
 [package]
 name = "hydra-umc-swarm-sync"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 rust-version = "1.85"
 description = "CRDT state reconciliation (last-writer-wins map with a Lamport logical clock) for the HYDRA-UMC swarm."
