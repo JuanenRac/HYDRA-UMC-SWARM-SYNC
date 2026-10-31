@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [0.1.8] - Steadier gossip test
+
 - **Steadier gossip test:** the test of a peer that is down or wrong keeps its port taken by a listener that hangs up instead of releasing it (a released port can be given to another node of the same run), and the wait for an effect has a limit that a loaded machine cannot reach.
 
 ## [0.1.7] - Missions and zone reservations as typed values with a fencing token
