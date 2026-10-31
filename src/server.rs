@@ -1531,8 +1531,9 @@ mod tests {
         assert_eq!(get_with_auth(port, "/state?full=1", Some(&secret)).0, 200);
     }
 
+    /// Waits for an observable effect; the limit is only the point where a hang is called a failure, so it is generous for a loaded machine.
     fn wait_for(what: &str, mut condition: impl FnMut() -> bool) {
-        for _ in 0..100 {
+        for _ in 0..600 {
             if condition() {
                 return;
             }
@@ -1610,10 +1611,17 @@ mod tests {
 
     #[test]
     fn a_peer_that_is_down_or_wrong_is_recorded_and_does_not_stop_the_node() {
-        let dead = {
-            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-            listener.local_addr().unwrap().port()
-        };
+        // A port that was only bound and released can be handed to another test's node in the same run, which would then answer as a
+        // healthy peer. So the port stays held for the whole test by a listener that accepts and hangs up: a peer that is "wrong"
+        // in a way that fails at once and the same way every time.
+        let wrong = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let dead = wrong.local_addr().unwrap().port();
+        // it lives until the test process ends, which is what keeps the port taken
+        std::thread::spawn(move || {
+            for stream in wrong.incoming().flatten() {
+                drop(stream);
+            }
+        });
         let node = start_node(None, gossip_to(&[dead], false));
         wait_for("the failure to be recorded", || {
             let (_, stats) = get(node, "/stats");

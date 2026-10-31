@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **Steadier gossip test:** the test of a peer that is down or wrong keeps its port taken by a listener that hangs up instead of releasing it (a released port can be given to another node of the same run), and the wait for an effect has a limit that a loaded machine cannot reach.
+
 ## [0.1.7] - Missions and zone reservations as typed values with a fencing token
 
 - **Missions and zone reservations are typed values with a fencing token.** What is written under `mission/<id>` (status, owner, attempt) or `zone_reservation/<id>` (holder, attempt, expiry) has to be a valid record, and its generation has to be `attempt + 1`: the generation is compared before the time, so the record of a newer attempt wins on every node whatever the clocks say and a node that was cut off cannot overwrite a takeover with its old attempt. `POST /reconcile` takes an optional `generation` on a write for this; a record with the wrong generation, an unknown field or a status outside the lifecycle is a `422`. Tried with two in-memory nodes joined by a link that can be cut, and over HTTP on one node.
