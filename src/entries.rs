@@ -109,6 +109,8 @@ pub fn check_entries(
         if let Some(value) = &entry.value {
             crate::typed::check_value(&entry.key, value)
                 .map_err(|reason| invalid(&entry.key, &reason))?;
+            crate::typed::check_generation(&entry.key, value, entry.generation)
+                .map_err(|reason| invalid(&entry.key, &reason))?;
         }
         if entry.generation == 0 {
             return Err(invalid(&entry.key, "the generation starts at 1"));
@@ -333,5 +335,144 @@ mod tests {
         assert_eq!(a_after.get(&"x".to_string()), Some(&"from-b".to_string()));
         assert_eq!(a_after.get(&"gone".to_string()), None);
         assert_eq!(a_after.get(&"only-b".to_string()), Some(&"2".to_string()));
+    }
+
+    // ---- missions and zone reservations: the attempt is the generation, and two orchestrators exchange them over a simulated link ----
+
+    fn mission(id: &str, status: &str, owner: &str, attempt: u64) -> String {
+        format!(
+            r#"{{"mission_id":"{id}","status":"{status}","owner":"{owner}","attempt":{attempt}}}"#
+        )
+    }
+
+    /// A link between two in-memory nodes: what one sends is checked and merged by the other, unless the link is cut.
+    struct SimulatedLink {
+        up: bool,
+    }
+
+    impl SimulatedLink {
+        fn send(
+            &self,
+            from: &LwwMap<String, String>,
+            to: LwwMap<String, String>,
+        ) -> LwwMap<String, String> {
+            if !self.up {
+                return to;
+            }
+            let entries = state_entries(from);
+            check_entries(&entries, &to, 1_000_000, 1_000).expect("a valid exchange");
+            merge_entries(&entries, to).unwrap().1
+        }
+    }
+
+    fn write_mission(
+        map: &mut LwwMap<String, String>,
+        record: &str,
+        key: &str,
+        attempt: u64,
+        time: u64,
+        writer: u64,
+    ) {
+        map.restore_entry(
+            key.to_string(),
+            Some(record.to_string()),
+            LamportTime(time),
+            writer,
+            attempt + 1,
+        );
+    }
+
+    #[test]
+    fn a_newer_attempt_wins_over_an_older_one_whatever_the_clocks_say() {
+        // A owns attempt 0 and keeps writing with a LATE clock while it is cut off; B takes the mission over as attempt 1 with an EARLY clock.
+        let key = "mission/m-1";
+        let mut a = LwwMap::new();
+        let mut b = LwwMap::new();
+        write_mission(
+            &mut a,
+            &mission("m-1", "running", "orch-a", 0),
+            key,
+            0,
+            10,
+            1,
+        );
+        let link = SimulatedLink { up: true };
+        b = link.send(&a, b);
+        let cut = SimulatedLink { up: false };
+        write_mission(
+            &mut b,
+            &mission("m-1", "assigned", "orch-b", 1),
+            key,
+            1,
+            11,
+            2,
+        );
+        write_mission(
+            &mut a,
+            &mission("m-1", "completed", "orch-a", 0),
+            key,
+            0,
+            900_000,
+            1,
+        );
+        // while the link is cut nothing moves
+        assert_eq!(
+            cut.send(&a, b.clone()).get(&key.to_string()),
+            b.get(&key.to_string())
+        );
+        // when it comes back, in either order of exchange, both end with attempt 1
+        let a_after = link.send(&b, a.clone());
+        let b_after = link.send(&a, b.clone());
+        assert_eq!(state_entries(&a_after), state_entries(&b_after));
+        let kept = a_after.get(&key.to_string()).unwrap();
+        assert!(
+            kept.contains("orch-b") && kept.contains("\"attempt\":1"),
+            "{kept}"
+        );
+    }
+
+    #[test]
+    fn a_record_whose_generation_is_not_its_attempt_plus_one_is_refused_by_a_merge() {
+        let local = LwwMap::new();
+        let forged = entry(
+            "mission/m-1",
+            Some(&mission("m-1", "running", "orch-a", 4)),
+            5,
+            1,
+            1, // attempt 4 must carry generation 5
+        );
+        let why = check_entries(&[forged], &local, 100, 10)
+            .unwrap_err()
+            .to_string();
+        assert!(why.contains("attempt plus one"), "{why}");
+        let honest = entry(
+            "mission/m-1",
+            Some(&mission("m-1", "running", "orch-a", 4)),
+            5,
+            1,
+            5,
+        );
+        assert!(check_entries(&[honest], &local, 100, 10).is_ok());
+        // a tombstone of a mission has no value to check
+        assert!(check_entries(&[entry("mission/m-1", None, 6, 1, 2)], &local, 100, 10).is_ok());
+    }
+
+    #[test]
+    fn a_zone_reservation_taken_over_with_a_higher_attempt_is_kept_by_both_nodes() {
+        let key = "zone_reservation/cell-2";
+        let reservation = |holder: &str, attempt: u64| {
+            format!(
+                r#"{{"zone_id":"cell-2","holder":"{holder}","attempt":{attempt},"expires_at_ms":1700000005000}}"#
+            )
+        };
+        let mut a = LwwMap::new();
+        let mut b = LwwMap::new();
+        write_mission(&mut a, &reservation("arm-1", 0), key, 0, 50, 1);
+        write_mission(&mut b, &reservation("arm-2", 1), key, 1, 20, 2);
+        let link = SimulatedLink { up: true };
+        let a_after = link.send(&b, a.clone());
+        let b_after = link.send(&a, b.clone());
+        assert_eq!(state_entries(&a_after), state_entries(&b_after));
+        assert!(a_after.get(&key.to_string()).unwrap().contains("arm-2"));
     }
 }

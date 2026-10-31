@@ -265,3 +265,13 @@ The map keeps strings, but what is written under the key `robot_state/<robot_id>
 | `--presence delete-wins\|add-wins` | How a delete and a concurrent add of the same key are resolved. `delete-wins` (default): a delete beats every add of the same life, even one with a later time. `add-wins`: an add later than the delete, which therefore did not see it, survives; an add of an earlier life or an earlier time still loses. Every node of a swarm must use the same value |
 
 Routes: `GET /state?full=1` answers `{"entries": [{"key", "value" (null for a deleted key), "time", "writer", "generation"}]}`; `POST /merge` takes `{"entries": [...]}` of that shape and answers `entries_received`, `conflicts_resolved`, `conflicts` (each with both generations) and `next_local_time`; an entry with a time or a generation too far ahead, an empty or oversized key, a value over 64 KiB or generation 0 is refused with `422`, the same stamp claiming two values with `400`. A `Write` of a `/reconcile` scenario may carry `"deleted": true` (its `value` is then ignored). `GET /stats` adds `peers` (rounds, last success age, last error, entries pulled and pushed per peer) and `sync.merges`.
+
+## Typed values: missions and zone reservations
+
+Two more prefixes are typed, the ones a pair of orchestrators shares. `mission/<mission_id>` holds `{"mission_id", "status", "owner", "attempt"}` with `status` one of `queued`, `assigned`, `running`,
+`completed`, `failed` or `cancelled`; `zone_reservation/<zone_id>` holds `{"zone_id", "holder", "attempt", "expires_at_ms"}`. The id of the value must be the one of the key, no other field is accepted, the texts are at most 64 bytes.
+
+`attempt` is the fencing token and it is also the GENERATION of the entry: `attempt + 1`. The generation is compared before the time, so the record of a newer attempt wins on every node over any record of an older
+attempt, whatever the clocks say, and a node that was cut off and writes late with its old attempt loses once the nodes meet again. A write whose generation is not `attempt + 1` is a `422`: in `POST /merge` the
+entries already carry their generation; in `POST /reconcile` a write of such a key must carry `"generation": attempt + 1` (and a write of any other key must not carry one).
+

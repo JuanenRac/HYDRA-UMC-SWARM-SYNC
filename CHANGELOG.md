@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **Missions and zone reservations are typed values with a fencing token.** What is written under `mission/<id>` (status, owner, attempt) or `zone_reservation/<id>` (holder, attempt, expiry) has to be a valid record, and its generation has to be `attempt + 1`: the generation is compared before the time, so the record of a newer attempt wins on every node whatever the clocks say and a node that was cut off cannot overwrite a takeover with its old attempt. `POST /reconcile` takes an optional `generation` on a write for this; a record with the wrong generation, an unknown field or a status outside the lifecycle is a `422`. Tried with two in-memory nodes joined by a link that can be cut, and over HTTP on one node.
+
 ## [0.1.6] - An add-wins presence option, the state of a robot as a typed value, a conflicts route and the universal README
 
 - **`--presence add-wins`:** an option for how a delete and a concurrent add of the same key are resolved. By default (`delete-wins`) nothing changes: a delete beats every add of the same life. With `add-wins` an add that is later than the delete, and so did not see it, survives, while an add of an earlier life or an earlier time still loses. The order stays total, so the merge laws hold; every node of a swarm must use the same value. Tried with unit tests of the merge laws, never across a real partition.

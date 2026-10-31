@@ -31,6 +31,10 @@ pub struct Write {
     /// delete of the same key is a key that was there and is gone.
     #[serde(default)]
     pub deleted: bool,
+    /// The generation of the entry. Only a mission or a zone reservation takes one (and then it must be its `attempt` plus one, see
+    /// `typed.rs`); for any other key it must be absent.
+    #[serde(default)]
+    pub generation: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -126,6 +130,16 @@ fn build_cell_map(
     for w in &cell.writes {
         if w.deleted {
             map.remove(w.key.clone(), LamportTime(w.time), cell.writer);
+            continue;
+        }
+        if let Some(generation) = w.generation {
+            map.restore_entry(
+                w.key.clone(),
+                Some(w.value.clone()),
+                LamportTime(w.time),
+                cell.writer,
+                generation,
+            );
             continue;
         }
         map.set_checked(
@@ -258,6 +272,7 @@ mod tests {
                     value: v.to_string(),
                     time: *t,
                     deleted: false,
+                    generation: None,
                 })
                 .collect(),
         }

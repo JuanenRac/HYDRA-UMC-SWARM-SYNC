@@ -522,6 +522,28 @@ fn reconcile_request(shared: &Shared, scenario: &Scenario) -> (u16, serde_json::
                     reason,
                 });
             }
+            let required = crate::typed::required_generation(&write.key, &write.value)
+                .ok()
+                .flatten();
+            let problem = match (required, write.generation) {
+                (Some(r), Some(g)) if r == g => None,
+                (Some(r), Some(g)) => Some(format!(
+                    "the generation of a record is its attempt plus one ({r}), not {g}"
+                )),
+                (Some(r), None) => Some(format!(
+                    "a mission or a zone reservation needs \"generation\": {r} (its attempt plus one)"
+                )),
+                (None, Some(_)) => {
+                    Some("generation is only for missions and zone reservations".to_string())
+                }
+                (None, None) => None,
+            };
+            if let Some(reason) = problem {
+                return error_response(&ReconcileError::InvalidEntry {
+                    key: write.key.chars().take(64).collect(),
+                    reason,
+                });
+            }
         }
     }
     match reconcile_with_prior(scenario, state.clone()) {
@@ -1608,5 +1630,58 @@ mod tests {
             .0,
             200
         );
+    }
+
+    #[test]
+    fn a_mission_is_written_with_its_attempt_plus_one_as_generation_and_the_newer_attempt_wins() {
+        let node = start_node(None, Extra::default());
+        let rec = |owner: &str, attempt: u64| {
+            format!(
+                r#"{{"mission_id":"m-1","status":"running","owner":"{owner}","attempt":{attempt}}}"#
+            )
+        };
+        let body = |owner: &str, attempt: u64, generation: &str, time: u64| {
+            let value = serde_json::to_string(&rec(owner, attempt)).unwrap();
+            format!(
+                r#"{{"cells":[{{"id":"c","writer":1,"writes":[{{"key":"mission/m-1","value":{value},"time":{time}{generation}}}]}}]}}"#
+            )
+        };
+        // no generation, or the wrong one, is a 422
+        assert_eq!(post(node, "/reconcile", &body("orch-a", 0, "", 5)).0, 422);
+        assert_eq!(
+            post(
+                node,
+                "/reconcile",
+                &body("orch-a", 0, r#","generation":3"#, 5)
+            )
+            .0,
+            422
+        );
+        // generation on an ordinary key is refused too
+        let plain = r#"{"cells":[{"id":"c","writer":1,"writes":[{"key":"k","value":"v","time":5,"generation":1}]}]}"#;
+        assert_eq!(post(node, "/reconcile", plain).0, 422);
+        // attempt 0 late in time, then attempt 1 early in time: attempt 1 is what the node keeps
+        assert_eq!(
+            post(
+                node,
+                "/reconcile",
+                &body("orch-a", 0, r#","generation":1"#, 900)
+            )
+            .0,
+            200
+        );
+        assert_eq!(
+            post(
+                node,
+                "/reconcile",
+                &body("orch-b", 1, r#","generation":2"#, 20)
+            )
+            .0,
+            200
+        );
+        let (_, state) = get(node, "/state");
+        let state: serde_json::Value = serde_json::from_str(&state).unwrap();
+        let kept = state["mission/m-1"].as_str().unwrap();
+        assert!(kept.contains("orch-b"), "{kept}");
     }
 }
