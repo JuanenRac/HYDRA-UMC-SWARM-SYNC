@@ -138,7 +138,12 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
+/// The numbers of this service for `GET /metrics` (see `service_metrics.rs`).
+static METRICS: crate::service_metrics::ServiceMetrics =
+    crate::service_metrics::ServiceMetrics::new("hydra-umc-swarm-sync");
+
 fn write_json(request: tiny_http::Request, status: u16, body: &serde_json::Value) {
+    METRICS.count(status);
     let text = body.to_string();
     let response = Response::from_string(text)
         .with_status_code(status)
@@ -314,6 +319,7 @@ pub fn run_with(
     max_time_jump: u64,
     extra: Extra,
 ) {
+    METRICS.start();
     let peers: Vec<PeerEvidence> = extra
         .gossip
         .as_ref()
@@ -356,6 +362,17 @@ pub fn run_with(
 fn serve(server: &Server, shared: &Shared) {
     for mut request in server.incoming_requests() {
         let path = request.url().split('?').next().unwrap_or("").to_string();
+
+        // the numbers of the service: the shared secret when one is set (like /state), 401 without it; never a key, a value or an address
+        if crate::service_metrics::is_metrics_request(&request) {
+            let allowed = is_authorized(&request, &shared.shared_secret);
+            let checks = [
+                ("state", !shared.state.is_poisoned()),
+                ("evidence", !shared.evidence.is_poisoned()),
+            ];
+            METRICS.respond(request, env!("CARGO_PKG_VERSION"), allowed, &checks);
+            continue;
+        }
 
         if path == "/health" && request.method() == &Method::Get {
             write_json(
@@ -889,6 +906,38 @@ mod tests {
             get_with_auth(port, "/conflicts", Some("conflicts-secret-0123456789")).0,
             200
         );
+    }
+
+    #[test]
+    fn metrics_are_prometheus_text_with_numbers_only() {
+        let port = start_test_server();
+        let scenario = r#"{"cells": [
+            {"id": "cell-a", "writer": 1, "writes": [{"key": "secret-key", "value": "secret-value", "time": 5}]}
+        ]}"#;
+        post(port, "/reconcile", scenario);
+        get(port, "/nothing-here");
+        let (status, text) = get(port, "/metrics");
+        assert_eq!(status, 200, "{text}");
+        assert!(text.contains("hydra_umc_service_info{service=\"hydra-umc-swarm-sync\",version=\""));
+        assert!(text.contains("hydra_umc_service_health{service=\"hydra-umc-swarm-sync\"} 1"));
+        assert!(text.contains("check=\"state\"} 1"));
+        assert!(text.contains("class=\"4xx\"}"));
+        assert!(!text.contains("secret-key"));
+        assert!(!text.contains("secret-value"));
+        assert!(!text.contains("cell-a"));
+    }
+
+    #[test]
+    fn metrics_need_the_shared_secret_when_one_is_set() {
+        let port = start_test_server_full(None, Some("metrics-secret-0123456789".to_string()));
+        assert_eq!(get(port, "/metrics").0, 401);
+        assert_eq!(
+            get_with_auth(port, "/metrics", Some("wrong-secret-0123456789")).0,
+            401
+        );
+        let (status, text) = get_with_auth(port, "/metrics", Some("metrics-secret-0123456789"));
+        assert_eq!(status, 200);
+        assert!(!text.contains("metrics-secret"));
     }
 
     #[test]

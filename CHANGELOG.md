@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **`GET /metrics` in the text format of Prometheus:** the version, the uptime, the responses by class of status (2xx to 5xx) and the health, the aggregate of the checks of the service (the state and the sync evidence are readable); only numbers about the service, never a key, a value, a cell, an address or a secret. Behind the shared secret when the node has one (`401` without it). The code is the canonical `service_metrics.rs` of HYDRA-UMC-SDK, copied byte for byte.
+
 ## [0.1.8] - Steadier gossip test
 
 - **Steadier gossip test:** the test of a peer that is down or wrong keeps its port taken by a listener that hangs up instead of releasing it (a released port can be given to another node of the same run), and the wait for an effect has a limit that a loaded machine cannot reach.

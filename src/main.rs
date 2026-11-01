@@ -26,6 +26,7 @@ mod gossip;
 mod lamport;
 mod reconcile;
 mod server;
+mod service_metrics;
 mod store;
 mod typed;
 
