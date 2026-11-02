@@ -33,7 +33,7 @@ $ hydra-umc-swarm-sync
 HYDRA-UMC-SWARM-SYNC v0.1.3
 CRDT swarm state reconciliation service: merges every HydraNode cell's view of swarm state into one convergent, order-independent result.
 Usage: hydra-umc-swarm-sync <scenario.json>
-       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--allow-anonymous]
+       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--clock-sync-config FILE] [--allow-anonymous]
 See scenarios/example.json for the expected format.
 ```
 
@@ -241,8 +241,8 @@ with `--state-file` pointed at a real, durable path.
 
 ## Not yet wired in
 
-Neither a live gossip network between cells nor real PTP (IEEE 1588)
-hardware clock sync exist yet — see the module doc at the top of
+Real PTP (IEEE 1588) hardware clock sync does not exist yet (the clock
+sync by software below is the step before it) — see the module doc at the top of
 `src/main.rs` for why both are deferred (PTP needs real hardware
 timers/NICs to mean anything; a gossip transport is a real network design
 decision). What this CLI/HTTP API does prove for real is the CRDT merge
@@ -275,3 +275,15 @@ Two more prefixes are typed, the ones a pair of orchestrators shares. `mission/<
 attempt, whatever the clocks say, and a node that was cut off and writes late with its old attempt loses once the nodes meet again. A write whose generation is not `attempt + 1` is a `422`: in `POST /merge` the
 entries already carry their generation; in `POST /reconcile` a write of such a key must carry `"generation": attempt + 1` (and a write of any other key must not carry one).
 
+## Clock sync by software (`--clock-sync-config`, `GET /time`)
+
+Off unless a file given with `--clock-sync-config` (or `SWARM_SYNC_CLOCK_CONFIG`) turns the `clock_sync` section on. The tuned values live in that file, never in the code; an unknown key, or a value out of range, stops the start.
+
+```json
+{"clock_sync": {"enabled": true, "interval_ms": 10000, "window": 8, "max_rtt_ms": 2000}}
+```
+
+* `GET /time` answers `{"recv_us": ..., "send_us": ...}`, the instants (microseconds since the Unix epoch, from the clock of that machine) at which it received the request and at which it answered. It asks for the shared secret when one is set, like `/state`, and answers like an unknown path (`404`) while the section is off.
+* Every `interval_ms` (1000 to 3600000, default 10000) the node probes each `--peer`: it notes `t0` (send), asks `GET /time` (`t1`, `t2` from the peer) and notes `t3` (receive). As NTP does, `offset = ((t1 - t0) + (t2 - t3)) / 2` is how far the clock of the peer is ahead and `rtt = (t3 - t0) - (t2 - t1)` is the time on the network. A probe whose instants cannot be right (time going backwards, the peer taking longer than the whole exchange) or whose round trip exceeds `max_rtt_ms` (1 to 60000, default 2000) is counted as rejected.
+* `GET /stats` shows `clock` (`null` while it is off): per peer `samples` in the window (`window`, 1 to 1000, default 8), `offsetUs` (the offset of the probe with the smallest round trip of the window), `rttMinUs`, `rttAvgUs`, `rttMaxUs`, `jitterUs` (the mean absolute difference between consecutive offsets), `probesAccepted`, `probesRejected`, `lastOkAgeMs` and `lastError`.
+* It is the step before PTP, not PTP: there are no hardware timestamps, so the precision is that of the network and of the scheduler of the operating system (milliseconds on a LAN). It only measures and reports: it does not change the clock of the machine or the Lamport order of the map.

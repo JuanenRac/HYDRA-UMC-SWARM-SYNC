@@ -17,7 +17,7 @@ GPL-3.0-or-later - see LICENSE
 <p align="center">
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="Protocol">
-  <img src="https://img.shields.io/badge/Tests-132%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-149%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.1.8-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -34,7 +34,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | バージョン | `0.1.8` |
 | 成熟度 | 機能する |
-| テスト | 132 (`cargo test`) |
+| テスト | 149 (`cargo test`) |
 | 技術 | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
 | 対象 | HYDRA-UMC セルの Raspberry Pi CM5 |
 | 実機での確認 | まだです：このバージョンについて実機での動作記録はありません |
@@ -50,7 +50,7 @@ GPL-3.0-or-later - see LICENSE
 | 領域 | 状態 | ここでの意味 |
 |---|---|---|
 | ソフトウェア | 🟡 | 主な目的では動作します。足りない点は上の正直さの確認に書かれています |
-| テスト | 🟢 | 自動テスト 132 件。変更のたびに実行されます |
+| テスト | 🟢 | 自動テスト 149 件。変更のたびに実行されます |
 | 実機 | 🔴 | まだです：このバージョンについて実機での動作記録はありません |
 | インターフェースとプロトコル | 🟡 | 提供するルートやメッセージは文書化され、クライアントで試験済みです。すべてのクライアントがまだ使ったわけではありません |
 | 連携 | 🟠 | CM5 のテストベンチで他のサービスと一緒に動作し、メッセージは SDK の共通契約に従います |
@@ -77,6 +77,7 @@ GPL-3.0-or-later - see LICENSE
 * 🔐 **実際のオプトイン共有シークレット認証（`SWARM_SYNC_SHARED_SECRET`）：** 未設定の場合、このプロジェクトは元のLAN信頼姿勢を維持します - どの呼び出し元でも `POST /reconcile` や `GET /state` を実行できます。設定した場合（環境変数のみ、CLIフラグは使いません - 共有シークレットはプロセス一覧ではなく環境変数/systemdユニットに属するべきです）、両方のルートで一致する `Authorization: Bearer <token>` が必要になり、定数時間で比較されます。`GET /stats` はどちらの場合も開いたままです。
 * 🧱 **ネットワーク上のオープンなノードになることを拒否し、ボディにも上限があります（v0）：** ループバック以外のアドレスでの `serve` には `SWARM_SYNC_SHARED_SECRET`（ラボ用途なら明示的な `--allow-anonymous`）が必要です。ネットワーク上のどのマシンから送られても統合してしまうノードは、そのマシンにスウォームの自己認識を書き換えさせてしまうからです。1 MiB を超えるリクエストボディは読み込む前に `413` で拒否され、状態ファイルは前のファイルを置き換える前にディスクへ強制書き込みされるため、停電で切り詰められた状態や空の状態が残ることはありません。*（実装済み）*
 * 📜 **競合の履歴:** `GET /conflicts` は、このノードが解決した競合(キー、勝った書き手、負けた書き手、時刻)を新しい順に、直近 200 件まで(または `?limit=N` で)一覧します。`/stats` は最後の一件しか持っていませんでした。共有シークレットが設定されている場合は、`/state` と同じくそれを求めます。
+* 🕰️ **ソフトウェアによる時計同期（既定はオフ）：** `--clock-sync-config` に渡すファイルの `clock_sync` セクションを有効にすると、`GET /time` が応答し、各ピアを数秒ごとにプローブします。NTP と同じ方法で求めたオフセットと往復時間（ウィンドウ内で往復時間が最小のプローブのオフセット）、ジッター、破棄したプローブが `GET /stats` の `clock` にマイクロ秒単位で出ます。PTP の前段であり、ハードウェアのタイムスタンプはないため、精度はネットワーク次第です。
 
 ## 🧩 HYDRA-UMC での役割
 
@@ -152,7 +153,7 @@ flowchart TD
 
 ## 🧪 テスト
 
-`cargo test` で自動テスト 132 件を実行します。 ハードウェアも、このマシンの外にあるものも必要ありません。
+`cargo test` で自動テスト 149 件を実行します。 ハードウェアも、このマシンの外にあるものも必要ありません。
 
 CI は `HYDRA_UMC_CI=1 python tools/ci_validate.py` を実行し、マニフェスト、文書、8 つの README、図を検査します。
 

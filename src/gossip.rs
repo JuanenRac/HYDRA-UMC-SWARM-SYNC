@@ -193,6 +193,33 @@ pub fn pull(peer: &Peer, token: Option<&str>) -> Result<Vec<StampedEntry>, Strin
     Ok(state.entries)
 }
 
+#[derive(serde::Deserialize)]
+struct TimeAnswer {
+    recv_us: u64,
+    send_us: u64,
+}
+
+/// One probe of the clock of a peer (`GET /time`): the four instants `t0..t3` of `clocksync::compute`, in microseconds. `t0` and `t3` are
+/// taken here, around the exchange; `t1` and `t2` come from the peer.
+pub fn time_probe(peer: &Peer, token: Option<&str>) -> Result<(u64, u64, u64, u64), String> {
+    let t0 = crate::clocksync::now_us();
+    let response = exchange(peer, "GET", "/time", token, None)?;
+    let t3 = crate::clocksync::now_us();
+    if response.status != 200 {
+        return Err(format!(
+            "{} answered HTTP {} to the clock probe",
+            peer.host_port, response.status
+        ));
+    }
+    let answer: TimeAnswer = serde_json::from_slice(&response.body).map_err(|e| {
+        format!(
+            "{} sent a clock answer that is not readable: {e}",
+            peer.host_port
+        )
+    })?;
+    Ok((t0, answer.recv_us, answer.send_us, t3))
+}
+
 /// Sends entries to a peer's `POST /merge`.
 pub fn push(peer: &Peer, token: Option<&str>, entries: &[StampedEntry]) -> Result<(), String> {
     let body = serde_json::to_vec(&serde_json::json!({ "entries": entries }))

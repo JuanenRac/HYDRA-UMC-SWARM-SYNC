@@ -17,7 +17,7 @@ GPL-3.0-or-later - see LICENSE
 <p align="center">
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="Protocol">
-  <img src="https://img.shields.io/badge/Tests-132%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-149%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.1.8-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -34,7 +34,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Versión | `0.1.8` |
 | Madurez | Funcional |
-| Tests | 132 (`cargo test`) |
+| Tests | 149 (`cargo test`) |
 | Tecnología | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
 | Destino | La Raspberry Pi CM5 de una celda HYDRA-UMC |
 | En hardware real | Todavía no: no consta ninguna ejecución en hardware real para esta versión |
@@ -50,7 +50,7 @@ Cada línea es una parte de este repositorio y la luz dice hasta dónde llega ho
 | Área | Estado | Qué significa aquí |
 |---|---|---|
 | Software | 🟡 | Funciona para su propósito principal; la comprobación de honestidad de arriba lista lo que aún falta |
-| Pruebas | 🟢 | 132 pruebas automáticas, ejecutadas en cada cambio |
+| Pruebas | 🟢 | 149 pruebas automáticas, ejecutadas en cada cambio |
 | Hardware real | 🔴 | Todavía no: no consta ninguna ejecución en hardware real para esta versión |
 | Interfaz y protocolos | 🟡 | Las rutas o los mensajes que ofrece están documentados y probados con un cliente; aún no los han usado todos los clientes |
 | Integración | 🟠 | Funciona junto con los demás servicios en el banco de pruebas de la CM5 y sus mensajes siguen los contratos compartidos del SDK |
@@ -77,6 +77,7 @@ Iniciar y terminar las trayectorias de varios brazos en el mismo microsegundo, o
 * 🔐 **Autenticación por Secreto Compartido Real Opcional (`SWARM_SYNC_SHARED_SECRET`):** sin configurar, este proyecto mantiene su postura original de confianza en la LAN - cualquier llamador puede hacer `POST /reconcile` o `GET /state`. Configurada (solo por variable de entorno, nunca por flag de CLI - un secreto compartido pertenece al entorno/unidad systemd, no a un listado de procesos), ambas rutas requieren un `Authorization: Bearer <token>` que coincida, comprobado en tiempo constante. `GET /stats` sigue abierta en ambos casos.
 * 🧱 **Se niega a ser un nodo abierto en la red, y cuerpos acotados (v0):** `serve` en una dirección que no sea loopback necesita `SWARM_SYNC_SHARED_SECRET` (o un `--allow-anonymous` explícito para laboratorio), porque un nodo que fusiona lo que le envíe cualquier equipo de la red deja que ese equipo reescriba la visión que el enjambre tiene de sí mismo; los cuerpos de petición de más de 1 MiB se rechazan con `413` antes de leerlos; y el fichero de estado se fuerza a disco antes de reemplazar al anterior, de modo que un corte de corriente no pueda dejar un estado truncado o vacío. *(implementado)*
 * 📜 **Historial de conflictos:** `GET /conflicts` lista los conflictos que este nodo resolvió (clave, escritor ganador, escritor perdedor y hora), el más reciente primero, hasta los últimos 200 o `?limit=N`; `/stats` solo guardaba el último. Pide el secreto compartido cuando hay uno, como `/state`.
+* 🕰️ **Sincronización de reloj por software (apagado por defecto):** con la sección `clock_sync` de un fichero dado a `--clock-sync-config`, `GET /time` responde y cada par se sondea cada pocos segundos: el desfase y el tiempo de ida y vuelta como los calcula NTP (el desfase de la sonda con menor ida y vuelta de la ventana), la fluctuación y las sondas rechazadas se publican en `clock` de `GET /stats`, en microsegundos. Es el paso previo a PTP: no hay marcas de tiempo por hardware, así que la precisión es la de la red.
 
 ## 🧩 Papel en HYDRA-UMC
 
@@ -152,7 +153,7 @@ Requiere la cadena de herramientas estable de Rust (edición 2021) con `cargo`.
 
 ## 🧪 Pruebas
 
-132 pruebas automáticas se ejecutan con `cargo test`. No necesitan hardware ni nada fuera de esta máquina.
+149 pruebas automáticas se ejecutan con `cargo test`. No necesitan hardware ni nada fuera de esta máquina.
 
 El CI ejecuta `HYDRA_UMC_CI=1 python tools/ci_validate.py`, que comprueba el manifiesto, los documentos, los ocho README y las imágenes.
 
@@ -213,7 +214,7 @@ cargo test   # el reloj de Lamport, y el CRDT en si - incluyendo
              # propio de deteccion de conflictos de merge_report(), y una
              # simulacion de 4 celulas que demuestra convergencia a
              # traves de multiples rondas de particion y reconexion
-             # parcial - 132 tests en total
+             # parcial - 149 tests en total
 ```
 
 La misma llamada a `reconcile()` también es alcanzable a través de una

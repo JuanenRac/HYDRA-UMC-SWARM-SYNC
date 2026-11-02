@@ -248,6 +248,8 @@ struct Shared {
     max_time_jump: u64,
     max_generation_jump: u64,
     gossip: Mutex<Vec<PeerEvidence>>,
+    /// the clock measurements; None while they are off (then GET /time answers like an unknown path)
+    clock: Option<Mutex<Vec<ClockPeerEvidence>>>,
 }
 
 /// What this node knows of its exchange with one peer.
@@ -274,6 +276,23 @@ pub struct GossipConfig {
 pub struct Extra {
     pub max_generation_jump: u64,
     pub gossip: Option<GossipConfig>,
+    /// the measurement of the clock of the peers and the route GET /time; None (the default) keeps both off
+    pub clock: Option<ClockSync>,
+}
+
+/// The clock measurements: how, and against which peers.
+#[derive(Clone)]
+pub struct ClockSync {
+    pub config: crate::clocksync::ClockConfig,
+    pub peers: Vec<Peer>,
+}
+
+/// What this node measured of the clock of one peer.
+struct ClockPeerEvidence {
+    address: String,
+    clock: crate::clocksync::PeerClock,
+    last_ok_ms: Option<u64>,
+    last_error: Option<String>,
 }
 
 impl Default for Extra {
@@ -281,6 +300,7 @@ impl Default for Extra {
         Extra {
             max_generation_jump: DEFAULT_MAX_GENERATION_JUMP,
             gossip: None,
+            clock: None,
         }
     }
 }
@@ -345,7 +365,24 @@ pub fn run_with(
         max_time_jump,
         max_generation_jump: extra.max_generation_jump,
         gossip: Mutex::new(peers),
+        clock: extra.clock.as_ref().map(|c| {
+            Mutex::new(
+                c.peers
+                    .iter()
+                    .map(|p| ClockPeerEvidence {
+                        address: format!("{}{}", p.host_port, p.prefix),
+                        clock: crate::clocksync::PeerClock::default(),
+                        last_ok_ms: None,
+                        last_error: None,
+                    })
+                    .collect(),
+            )
+        }),
     });
+    if let Some(clock) = extra.clock.clone() {
+        let shared = Arc::clone(&shared);
+        thread::spawn(move || clock_loop(&shared, &clock));
+    }
     if let Some(config) = extra.gossip {
         let shared = Arc::clone(&shared);
         thread::spawn(move || gossip_loop(&shared, &config));
@@ -396,7 +433,31 @@ fn serve(server: &Server, shared: &Shared) {
                     "persistent": shared.state_path.is_some(),
                     "sync": sync,
                     "peers": peers_json(shared, now_ms()),
+                    "clock": clock_json(shared, now_ms()),
                 }),
+            );
+            continue;
+        }
+        if path == "/time" && request.method() == &Method::Get {
+            if shared.clock.is_none() {
+                write_json(request, 404, &json!({"error": "not found"}));
+                continue;
+            }
+            // taken as early as the request is seen, and again just before it is answered
+            let recv_us = crate::clocksync::now_us();
+            if !is_authorized(&request, &shared.shared_secret) {
+                write_json(
+                    request,
+                    401,
+                    &json!({"error": "missing or invalid Authorization: Bearer <token>"}),
+                );
+                continue;
+            }
+            let send_us = crate::clocksync::now_us();
+            write_json(
+                request,
+                200,
+                &json!({"recv_us": recv_us, "send_us": send_us}),
             );
             continue;
         }
@@ -685,6 +746,70 @@ fn gossip_round(shared: &Shared, config: &GossipConfig) {
                 evidence.last_error = Some(e);
             }
         }
+    }
+}
+
+/// The clock measurements for `GET /stats`: `null` while they are off. Offsets are how far each peer's clock is ahead of this node's,
+/// from the probe with the smallest round trip of the window; everything in microseconds.
+fn clock_json(shared: &Shared, now: u64) -> serde_json::Value {
+    let Some(clock) = &shared.clock else {
+        return serde_json::Value::Null;
+    };
+    let peers = clock.lock().unwrap();
+    json!({
+        "method": "software offset and round trip, NTP style (not PTP)",
+        "peers": peers
+            .iter()
+            .map(|p| {
+                let stats = p.clock.stats();
+                json!({
+                    "peer": p.address,
+                    "probesAccepted": p.clock.accepted,
+                    "probesRejected": p.clock.rejected,
+                    "samples": stats.as_ref().map(|s| s.samples),
+                    "offsetUs": stats.as_ref().map(|s| s.offset_us),
+                    "rttMinUs": stats.as_ref().map(|s| s.rtt_min_us),
+                    "rttAvgUs": stats.as_ref().map(|s| s.rtt_avg_us),
+                    "rttMaxUs": stats.as_ref().map(|s| s.rtt_max_us),
+                    "jitterUs": stats.as_ref().map(|s| s.jitter_us),
+                    "lastOkAgeMs": p.last_ok_ms.map(|t| now.saturating_sub(t)),
+                    "lastError": p.last_error,
+                })
+            })
+            .collect::<Vec<_>>(),
+    })
+}
+
+/// One probe of every peer. A peer that cannot be reached is recorded and the others are still probed.
+fn clock_round(shared: &Shared, clock: &ClockSync) {
+    let token = shared.shared_secret.as_deref();
+    let Some(evidence) = &shared.clock else {
+        return;
+    };
+    for (index, peer) in clock.peers.iter().enumerate() {
+        let outcome = gossip::time_probe(peer, token);
+        let mut all = evidence.lock().unwrap();
+        let entry = &mut all[index];
+        match outcome {
+            Ok((t0, t1, t2, t3)) => {
+                entry
+                    .clock
+                    .record(crate::clocksync::compute(t0, t1, t2, t3), &clock.config);
+                entry.last_ok_ms = Some(now_ms());
+                entry.last_error = None;
+            }
+            Err(e) => {
+                eprintln!("[swarm-sync] clock probe of {}: {e}", entry.address);
+                entry.last_error = Some(e);
+            }
+        }
+    }
+}
+
+fn clock_loop(shared: &Shared, clock: &ClockSync) {
+    loop {
+        clock_round(shared, clock);
+        thread::sleep(std::time::Duration::from_millis(clock.config.interval_ms));
     }
 }
 
@@ -1602,6 +1727,7 @@ mod tests {
                 interval: std::time::Duration::from_millis(50),
                 push,
             }),
+            clock: None,
         }
     }
 
@@ -1740,5 +1866,87 @@ mod tests {
         let state: serde_json::Value = serde_json::from_str(&state).unwrap();
         let kept = state["mission/m-1"].as_str().unwrap();
         assert!(kept.contains("orch-b"), "{kept}");
+    }
+
+    // ---- the measurement of the clock of the peers ----
+
+    fn clock_to(peers: &[u16], secret_free: bool) -> Extra {
+        let _ = secret_free;
+        Extra {
+            max_generation_jump: DEFAULT_MAX_GENERATION_JUMP,
+            gossip: None,
+            clock: Some(ClockSync {
+                config: crate::clocksync::ClockConfig {
+                    interval_ms: 1_000,
+                    ..crate::clocksync::ClockConfig::default()
+                },
+                peers: peers
+                    .iter()
+                    .map(|p| gossip::parse_peer(&format!("http://127.0.0.1:{p}")).unwrap())
+                    .collect(),
+            }),
+        }
+    }
+
+    #[test]
+    fn time_is_an_unknown_path_and_stats_say_null_while_the_clock_sync_is_off() {
+        let port = start_node(None, Extra::default());
+        assert_eq!(get(port, "/time").0, 404);
+        let (_, stats) = get(port, "/stats");
+        let stats: serde_json::Value = serde_json::from_str(&stats).unwrap();
+        assert!(stats["clock"].is_null(), "{stats}");
+    }
+
+    #[test]
+    fn time_answers_the_two_instants_when_it_is_on_and_needs_the_secret_when_there_is_one() {
+        let port = start_node(Some("s3".into()), clock_to(&[], true));
+        assert_eq!(get(port, "/time").0, 401);
+        let (status, body) = get_with_auth(port, "/time", Some("s3"));
+        assert_eq!(status, 200, "{body}");
+        let answer: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let (recv, send) = (
+            answer["recv_us"].as_u64().unwrap(),
+            answer["send_us"].as_u64().unwrap(),
+        );
+        assert!(send >= recv);
+        let now = crate::clocksync::now_us();
+        assert!(
+            now.abs_diff(send) < 5_000_000,
+            "the answer is a time of today"
+        );
+    }
+
+    #[test]
+    fn two_nodes_on_one_machine_measure_an_offset_near_zero() {
+        let other = start_node(None, clock_to(&[], true));
+        let node = start_node(None, clock_to(&[other], true));
+        wait_for("a clock sample of the peer", || {
+            let (_, stats) = get(node, "/stats");
+            let stats: serde_json::Value = serde_json::from_str(&stats).unwrap();
+            stats["clock"]["peers"][0]["samples"].as_u64().unwrap_or(0) >= 1
+        });
+        let (_, stats) = get(node, "/stats");
+        let stats: serde_json::Value = serde_json::from_str(&stats).unwrap();
+        let peer = &stats["clock"]["peers"][0];
+        let offset = peer["offsetUs"].as_i64().unwrap();
+        assert!(
+            offset.abs() < 50_000,
+            "same machine, same clock: {offset} us"
+        );
+        assert!(peer["rttMinUs"].as_u64().unwrap() < 1_000_000);
+        assert_eq!(peer["probesRejected"], 0);
+        assert!(peer["lastError"].is_null());
+    }
+
+    #[test]
+    fn a_peer_without_clock_sync_is_recorded_as_an_error_and_does_not_stop_the_node() {
+        let plain = start_node(None, Extra::default());
+        let node = start_node(None, clock_to(&[plain], true));
+        wait_for("the error of the peer", || {
+            let (_, stats) = get(node, "/stats");
+            let stats: serde_json::Value = serde_json::from_str(&stats).unwrap();
+            stats["clock"]["peers"][0]["lastError"].is_string()
+        });
+        assert_eq!(get(node, "/health").0, 200);
     }
 }

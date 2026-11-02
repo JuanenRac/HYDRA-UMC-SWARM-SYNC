@@ -20,6 +20,7 @@
 // real HTTP API - still a request/response computation over a scenario
 // handed to it, not the deferred live gossip network itself.
 
+mod clocksync;
 mod crdt;
 mod entries;
 mod gossip;
@@ -130,6 +131,32 @@ fn run_serve(args: &[String]) -> ExitCode {
         None => 10_000,
     };
     let gossip_push = args.iter().any(|a| a == "--gossip-push");
+    // The measurement of the clock of the peers (and GET /time) is off unless the configuration file turns it on.
+    let clock = match find_flag(args, "--clock-sync-config")
+        .or_else(|| env::var("SWARM_SYNC_CLOCK_CONFIG").ok())
+        .filter(|p| !p.is_empty())
+    {
+        None => None,
+        Some(path) => {
+            let text = match fs::read_to_string(&path) {
+                Ok(text) => text,
+                Err(e) => {
+                    eprintln!("[swarm-sync] fatal: could not read {path}: {e}");
+                    return ExitCode::from(2);
+                }
+            };
+            match clocksync::parse_config(&text) {
+                Ok(config) => config.map(|config| server::ClockSync {
+                    config,
+                    peers: peers.clone(),
+                }),
+                Err(e) => {
+                    eprintln!("[swarm-sync] fatal: {e}");
+                    return ExitCode::from(2);
+                }
+            }
+        }
+    };
     if !peers.is_empty() && shared_secret.is_none() {
         eprintln!("[swarm-sync] warning: --peer without SWARM_SYNC_SHARED_SECRET: the state of this node is asked for and sent with no authentication");
     }
@@ -171,6 +198,13 @@ fn run_serve(args: &[String]) -> ExitCode {
                 None => eprintln!("[swarm-sync] SWARM_SYNC_SHARED_SECRET not set: /reconcile and /state have NO caller authentication (LAN-trust mode)"),
             }
             eprintln!("[swarm-sync] POST /merge and GET /state?full=1 exchange the full entries with a peer");
+            if let Some(clock) = &clock {
+                eprintln!(
+                    "[swarm-sync] clock sync is on: GET /time answers, and {} peer(s) are probed every {} ms (software offset and round trip, not PTP)",
+                    clock.peers.len(),
+                    clock.config.interval_ms
+                );
+            }
             let gossip = if peers.is_empty() {
                 None
             } else {
@@ -195,6 +229,7 @@ fn run_serve(args: &[String]) -> ExitCode {
                 server::Extra {
                     max_generation_jump,
                     gossip,
+                    clock,
                 },
             );
             ExitCode::SUCCESS
@@ -219,7 +254,7 @@ fn main() -> ExitCode {
     let Some(scenario_path) = args.get(1) else {
         eprintln!("Usage: hydra-umc-swarm-sync <scenario.json>");
         eprintln!(
-            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--allow-anonymous]"
+            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--clock-sync-config FILE] [--allow-anonymous]"
         );
         eprintln!("See scenarios/example.json for the expected format.");
         return ExitCode::SUCCESS;

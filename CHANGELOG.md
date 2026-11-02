@@ -5,6 +5,7 @@ All notable changes to this project are documented here.
 ## [Unreleased]
 
 - **`GET /metrics` in the text format of Prometheus:** the version, the uptime, the responses by class of status (2xx to 5xx) and the health, the aggregate of the checks of the service (the state and the sync evidence are readable); only numbers about the service, never a key, a value, a cell, an address or a secret. Behind the shared secret when the node has one (`401` without it). The code is the canonical `service_metrics.rs` of HYDRA-UMC-SDK, copied byte for byte.
+- **Clock sync by software, off by default:** with a file given to `--clock-sync-config` whose `clock_sync` section is enabled, `GET /time` answers and each peer is probed every few seconds with the NTP offset and round-trip formulas; `GET /stats` shows per peer the offset of the probe with the smallest round trip of the window, the round trip (minimum, average, maximum), the jitter and the probes accepted and rejected, in microseconds. It is the step before PTP, without hardware timestamps. 12 new tests.
 
 ## [0.1.8] - Steadier gossip test
 
