@@ -56,7 +56,7 @@ Chaque ligne est une partie de ce dépôt et le feu dit où elle en est aujourd'
 | Intégration | 🟠 | Il fonctionne avec les autres services sur le banc d'essai CM5 et ses messages suivent les contrats partagés du SDK |
 | Sécurité | 🟠 | Quelques protections existent (un jeton, des limites sur ce qu'il accepte) mais elles ne sont pas toutes couvertes par des tests ; personne hors du projet ne les a relues |
 | Déploiement | 🟡 | Installé comme service sur le banc d'essai CM5 avec son installeur et son unité ; redémarré à chaque mise à jour |
-| Exploitation | 🟡 | Expose /metrics au format texte de Prometheus avec un résumé de santé ; pas encore relié à un tableau de supervision |
+| Exploitation | 🟡 | Offre /metrics au format texte de Prometheus avec un résumé de santé dès que le fichier de configuration l'active (désactivé par défaut) ; pas encore relié à un tableau de supervision |
 | Mises à jour | 🟡 | Mis à jour par HYDRA-UMC-UPDATER (trains signés, sauvegardes et retour arrière testés sur un ordinateur) |
 | Documentation | 🟢 | README en huit langues, vérifié par rapport au manifeste à chaque modification |
 

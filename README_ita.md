@@ -56,7 +56,7 @@ Ogni riga è una parte di questo repository e il semaforo dice a che punto è og
 | Integrazione | 🟠 | Funziona insieme agli altri servizi sul banco prova CM5 e i suoi messaggi seguono i contratti condivisi dell'SDK |
 | Sicurezza | 🟠 | Esistono alcune protezioni (un token, limiti su ciò che accetta) ma non sono tutte coperte da test; nessuno al di fuori del progetto le ha riviste |
 | Distribuzione | 🟡 | Installato come servizio sul banco prova CM5 con il suo installatore e la sua unità; riavviato a ogni aggiornamento |
-| Esercizio | 🟡 | Espone /metrics nel formato testo di Prometheus con un riepilogo dello stato; non è ancora collegato a un pannello di monitoraggio |
+| Esercizio | 🟡 | Offre /metrics nel formato testo di Prometheus con un riepilogo dello stato quando il file di configurazione lo attiva (spento per impostazione predefinita); non è ancora collegato a un pannello di monitoraggio |
 | Aggiornamenti | 🟡 | Si aggiorna con HYDRA-UMC-UPDATER (treni firmati, copie di sicurezza e ripristino provati su un computer) |
 | Documentazione | 🟢 | README in otto lingue, verificato rispetto al manifesto a ogni modifica |
 
