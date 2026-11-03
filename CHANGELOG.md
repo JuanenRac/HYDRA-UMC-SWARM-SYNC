@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [0.1.9] - The metrics route is off by default and opens only from the configuration file, loopback only, and the clock sync by software stays off by default
+
 - **`GET /metrics` is off by default and loopback-only:** the `metrics` section of the configuration file (`{"metrics": {"enabled": true}}`, in the file given with `--clock-sync-config`) opens it. Closed, the route answers `404`; open, it answers a caller on this machine, or any caller with the shared secret when the node has one.
 
 - **`GET /metrics` in the text format of Prometheus:** the version, the uptime, the responses by class of status (2xx to 5xx) and the health, the aggregate of the checks of the service (the state and the sync evidence are readable); only numbers about the service, never a key, a value, a cell, an address or a secret. Behind the shared secret when the node has one (`401` without it). The code is the canonical `service_metrics.rs` of HYDRA-UMC-SDK, copied byte for byte.
