@@ -132,6 +132,8 @@ fn run_serve(args: &[String]) -> ExitCode {
     };
     let gossip_push = args.iter().any(|a| a == "--gossip-push");
     // The measurement of the clock of the peers (and GET /time) is off unless the configuration file turns it on.
+    // The same file opens `GET /metrics` with its `metrics` section (off unless enabled).
+    let mut metrics = false;
     let clock = match find_flag(args, "--clock-sync-config")
         .or_else(|| env::var("SWARM_SYNC_CLOCK_CONFIG").ok())
         .filter(|p| !p.is_empty())
@@ -145,6 +147,13 @@ fn run_serve(args: &[String]) -> ExitCode {
                     return ExitCode::from(2);
                 }
             };
+            match clocksync::parse_metrics(&text) {
+                Ok(on) => metrics = on,
+                Err(e) => {
+                    eprintln!("[swarm-sync] fatal: {e}");
+                    return ExitCode::from(2);
+                }
+            }
             match clocksync::parse_config(&text) {
                 Ok(config) => config.map(|config| server::ClockSync {
                     config,
@@ -230,6 +239,7 @@ fn run_serve(args: &[String]) -> ExitCode {
                     max_generation_jump,
                     gossip,
                     clock,
+                    metrics,
                 },
             );
             ExitCode::SUCCESS

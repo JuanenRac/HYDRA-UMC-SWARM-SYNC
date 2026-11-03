@@ -63,6 +63,25 @@ struct ClockSection {
 #[serde(deny_unknown_fields)]
 struct FileConfig {
     clock_sync: Option<ClockSection>,
+    metrics: Option<MetricsSection>,
+}
+
+/// The `metrics` section: `GET /metrics` in the text format of Prometheus. Off unless `enabled`; closed, the route answers `404` like an unknown path.
+/// Open, it answers a caller on this machine, or any caller that presents the shared secret when the node has one.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MetricsSection {
+    #[serde(default)]
+    enabled: bool,
+}
+
+/// Whether the configuration file opens `GET /metrics` (off when there is no file, no section or `enabled` is false).
+pub fn parse_metrics(text: &str) -> Result<bool, String> {
+    if text.trim().is_empty() {
+        return Ok(false);
+    }
+    let file: FileConfig = serde_json::from_str(text).map_err(|e| format!("configuration: {e}"))?;
+    Ok(file.metrics.is_some_and(|s| s.enabled))
 }
 
 /// Reads the configuration file. `Ok(None)` means the measurements are off (no section or `enabled` false).
@@ -276,6 +295,19 @@ mod tests {
     #[test]
     fn no_probe_no_stats() {
         assert!(PeerClock::default().stats().is_none());
+    }
+
+    #[test]
+    fn metrics_are_off_unless_the_section_enables_them() {
+        assert!(!parse_metrics("").unwrap());
+        assert!(!parse_metrics("{}").unwrap());
+        assert!(!parse_metrics(r#"{"metrics":{"enabled":false}}"#).unwrap());
+        assert!(parse_metrics(r#"{"metrics":{"enabled":true}}"#).unwrap());
+        assert!(parse_metrics(r#"{"metrics":{"enabled":true,"bogus":1}}"#).is_err());
+        assert_eq!(
+            parse_config(r#"{"metrics":{"enabled":true}}"#).unwrap(),
+            None
+        );
     }
 
     #[test]

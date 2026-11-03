@@ -250,6 +250,8 @@ struct Shared {
     gossip: Mutex<Vec<PeerEvidence>>,
     /// the clock measurements; None while they are off (then GET /time answers like an unknown path)
     clock: Option<Mutex<Vec<ClockPeerEvidence>>>,
+    /// whether `GET /metrics` is open (the `metrics` section of the configuration file)
+    metrics: bool,
 }
 
 /// What this node knows of its exchange with one peer.
@@ -278,6 +280,8 @@ pub struct Extra {
     pub gossip: Option<GossipConfig>,
     /// the measurement of the clock of the peers and the route GET /time; None (the default) keeps both off
     pub clock: Option<ClockSync>,
+    /// `GET /metrics` answers only with this (off by default: the route answers like an unknown path)
+    pub metrics: bool,
 }
 
 /// The clock measurements: how, and against which peers.
@@ -301,6 +305,7 @@ impl Default for Extra {
             max_generation_jump: DEFAULT_MAX_GENERATION_JUMP,
             gossip: None,
             clock: None,
+            metrics: false,
         }
     }
 }
@@ -365,6 +370,7 @@ pub fn run_with(
         max_time_jump,
         max_generation_jump: extra.max_generation_jump,
         gossip: Mutex::new(peers),
+        metrics: extra.metrics,
         clock: extra.clock.as_ref().map(|c| {
             Mutex::new(
                 c.peers
@@ -400,9 +406,18 @@ fn serve(server: &Server, shared: &Shared) {
     for mut request in server.incoming_requests() {
         let path = request.url().split('?').next().unwrap_or("").to_string();
 
-        // the numbers of the service: the shared secret when one is set (like /state), 401 without it; never a key, a value or an address
+        // the numbers of the service: closed unless the configuration opens them (then `404`); with the shared secret set (like /state) the caller
+        // presents it (401 without), without one only a caller on this machine may read them; never a key, a value or an address
         if crate::service_metrics::is_metrics_request(&request) {
-            let allowed = is_authorized(&request, &shared.shared_secret);
+            if !shared.metrics {
+                write_json(request, 404, &json!({"error": "not found"}));
+                continue;
+            }
+            let allowed = if shared.shared_secret.is_some() {
+                is_authorized(&request, &shared.shared_secret)
+            } else {
+                request.remote_addr().is_some_and(|a| a.ip().is_loopback())
+            };
             let checks = [
                 ("state", !shared.state.is_poisoned()),
                 ("evidence", !shared.evidence.is_poisoned()),
@@ -1034,8 +1049,27 @@ mod tests {
     }
 
     #[test]
-    fn metrics_are_prometheus_text_with_numbers_only() {
+    fn metrics_are_off_by_default_and_answer_like_an_unknown_path() {
         let port = start_test_server();
+        assert_eq!(get(port, "/metrics").0, 404);
+        let guarded = start_test_server_full(None, Some("metrics-secret-0123456789".to_string()));
+        assert_eq!(
+            get_with_auth(guarded, "/metrics", Some("metrics-secret-0123456789")).0,
+            404,
+            "closed means closed, even with the secret"
+        );
+    }
+
+    fn metrics_on() -> Extra {
+        Extra {
+            metrics: true,
+            ..Extra::default()
+        }
+    }
+
+    #[test]
+    fn metrics_are_prometheus_text_with_numbers_only() {
+        let port = start_node(None, metrics_on());
         let scenario = r#"{"cells": [
             {"id": "cell-a", "writer": 1, "writes": [{"key": "secret-key", "value": "secret-value", "time": 5}]}
         ]}"#;
@@ -1054,7 +1088,7 @@ mod tests {
 
     #[test]
     fn metrics_need_the_shared_secret_when_one_is_set() {
-        let port = start_test_server_full(None, Some("metrics-secret-0123456789".to_string()));
+        let port = start_node(Some("metrics-secret-0123456789".to_string()), metrics_on());
         assert_eq!(get(port, "/metrics").0, 401);
         assert_eq!(
             get_with_auth(port, "/metrics", Some("wrong-secret-0123456789")).0,
@@ -1728,6 +1762,7 @@ mod tests {
                 push,
             }),
             clock: None,
+            metrics: false,
         }
     }
 
@@ -1885,6 +1920,7 @@ mod tests {
                     .map(|p| gossip::parse_peer(&format!("http://127.0.0.1:{p}")).unwrap())
                     .collect(),
             }),
+            metrics: false,
         }
     }
 

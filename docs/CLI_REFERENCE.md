@@ -275,6 +275,14 @@ Two more prefixes are typed, the ones a pair of orchestrators shares. `mission/<
 attempt, whatever the clocks say, and a node that was cut off and writes late with its old attempt loses once the nodes meet again. A write whose generation is not `attempt + 1` is a `422`: in `POST /merge` the
 entries already carry their generation; in `POST /reconcile` a write of such a key must carry `"generation": attempt + 1` (and a write of any other key must not carry one).
 
+## Metrics (`metrics` section, `GET /metrics`)
+
+Off unless the `metrics` section of the configuration file (the one given with `--clock-sync-config` or `SWARM_SYNC_CLOCK_CONFIG`) has `"enabled": true`; read at start, an unknown key stops the start. Closed, the route answers `404` like any unknown path, even with the secret. Open, it answers the text format of Prometheus to a caller on this machine, or to any caller that presents the shared secret when the node has one (`401` otherwise). It publishes numbers only (version, uptime, responses by class of status, health and the `state` and `evidence` checks); no label carries a key, a value, a cell or an address.
+
+```json
+{"metrics": {"enabled": true}}
+```
+
 ## Clock sync by software (`--clock-sync-config`, `GET /time`)
 
 Off unless a file given with `--clock-sync-config` (or `SWARM_SYNC_CLOCK_CONFIG`) turns the `clock_sync` section on. The tuned values live in that file, never in the code; an unknown key, or a value out of range, stops the start.
