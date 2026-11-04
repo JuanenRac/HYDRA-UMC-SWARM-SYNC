@@ -26,5 +26,8 @@
     "port": 8112,
     "systemd_unit": "hydra-umc-swarm-sync.service",
     "health_path": "/health"
-  }
+  },
+  "depends_on": [
+    "HYDRA-UMC-ORCHESTRATOR"
+  ]
 }
