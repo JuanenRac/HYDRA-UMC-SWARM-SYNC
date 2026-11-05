@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **The build test of the repository compiles only on CI or when allowed:** for the stacks that compile (`rust`, `go`, `android`, `flutter`, `firmware-c`), `tools/build_test.py` prints `BUILD_TEST=SKIPPED` with exit status 2 on a plain PC, never a pass; `ALLOW_LOCAL_BUILD=1` allows it and a CI runner always may. The `python` and `node` stacks are not locked.
+
 ## [0.1.9] - The metrics route is off by default and opens only from the configuration file, loopback only, and the clock sync by software stays off by default
 
 - **`GET /metrics` is off by default and loopback-only:** the `metrics` section of the configuration file (`{"metrics": {"enabled": true}}`, in the file given with `--clock-sync-config`) opens it. Closed, the route answers `404`; open, it answers a caller on this machine, or any caller with the shared secret when the node has one.
