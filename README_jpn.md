@@ -84,6 +84,8 @@ GPL-3.0-or-later - see LICENSE
 
 **HYDRA-UMC-SWARM-SYNC** は、各セルが持つスウォームの見え方を、マージの順序に依存しない 1 つの結果に統合します。Lamport 論理時計を使った last-writer-wins マップです。シナリオファイルから、または状態をディスクに保持してピアとゴシップできる小さな HTTP ノードとして動作します。ハードウェアの時刻源ではありません。
 
+> **プラットフォーム：** この README の「CM5」は、現在動作している試験用ベンチを指します。HYDRA-UMC の目標プラットフォームは NVIDIA Jetson Orin NX 16 GB ですが、これは製作も試験もされていない設計です。
+
 ## 🏛️ アーキテクチャ
 
 <p align="center">

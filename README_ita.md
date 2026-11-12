@@ -84,6 +84,8 @@ Avviare e terminare le traiettorie di più bracci nello stesso microsecondo, o e
 
 **HYDRA-UMC-SWARM-SYNC** fonde le viste dello sciame che ogni cella possiede in un risultato che non dipende dall'ordine della fusione: una mappa «l'ultimo scrittore vince» con un orologio logico di Lamport. Funziona con un file di scenario o come un piccolo nodo HTTP che conserva lo stato su disco e può dialogare con i pari; non è una sorgente oraria hardware.
 
+> **Piattaforma:** dove questo README dice CM5, intende il banco pilota che funziona oggi; la piattaforma di destinazione di HYDRA-UMC è un NVIDIA Jetson Orin NX da 16 GB, un progetto non costruito né provato.
+
 ## 🏛️ Architettura
 
 <p align="center">

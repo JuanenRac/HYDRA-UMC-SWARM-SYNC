@@ -84,6 +84,8 @@ GPL-3.0-or-later - see LICENSE
 
 **HYDRA-UMC-SWARM-SYNC** 把每个单元持有的群体视图合并成一个与合并顺序无关的结果：带 Lamport 逻辑时钟的“后写者获胜”映射。它可以用场景文件运行，也可以作为把状态保存在磁盘上、能与对等节点交换信息的小型 HTTP 节点运行；它不是硬件时间源。
 
+> **平台：** 本 README 中的 CM5 指的是目前正在运行的试验台；HYDRA-UMC 的目标平台是 NVIDIA Jetson Orin NX 16 GB，这是尚未制造或测试的设计。
+
 ## 🏛️ 架构
 
 <p align="center">

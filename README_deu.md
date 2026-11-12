@@ -84,6 +84,8 @@ Die Trajektorien mehrerer Arme in derselben Mikrosekunde zu starten und zu beend
 
 **HYDRA-UMC-SWARM-SYNC** führt die Sicht auf den Schwarm, die jede Zelle hat, zu einem Ergebnis zusammen, das nicht von der Reihenfolge der Zusammenführung abhängt: eine Last-Writer-Wins-Map mit einer logischen Lamport-Uhr. Er läuft mit einer Szenariodatei oder als kleiner HTTP-Knoten, der seinen Zustand auf der Platte hält und mit Nachbarn tratschen kann; er ist keine Hardware-Zeitquelle.
 
+> **Plattform:** Wo dieses README CM5 sagt, ist der Pilotprüfstand gemeint, der heute läuft; die Zielplattform von HYDRA-UMC ist ein NVIDIA Jetson Orin NX 16 GB, ein Entwurf, der weder gebaut noch getestet wurde.
+
 ## 🏛️ Architektur
 
 <p align="center">

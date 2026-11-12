@@ -84,6 +84,8 @@ Starting and ending the trajectories of several arms at the same microsecond, or
 
 **HYDRA-UMC-SWARM-SYNC** merges the views of the swarm that each cell holds into one result that does not depend on the order of the merge: a last-writer-wins map with a Lamport logical clock. It runs from a scenario file or as a small HTTP node that keeps its state on disk and can gossip with peers; it is not a hardware time source.
 
+> **Platform:** where this README says CM5, it means the pilot bench that runs today; the target platform of HYDRA-UMC is an NVIDIA Jetson Orin NX 16 GB, a design that has not been built or tested.
+
 ## 🏛️ Architecture
 
 <p align="center">
