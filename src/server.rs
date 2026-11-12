@@ -36,6 +36,7 @@ use crate::entries::{
 };
 use crate::gossip::{self, Peer};
 use crate::reconcile::{check_stamps, reconcile_with_prior, ReconcileError, Scenario};
+use crate::retention::DeletedAt;
 use crate::store;
 
 /// How many threads serve requests at the same time.
@@ -170,6 +171,8 @@ struct SyncEvidence {
     /// Merges of stamped entries (from a peer or from `POST /merge`).
     merges: u64,
     conflicts_total: u64,
+    /// Tombstones dropped because they were older than the retention window.
+    tombstones_purged: u64,
     last_reconcile_ms: Option<u64>,
     last_conflict: Option<serde_json::Value>,
     /// The most recent conflicts that were resolved, oldest first, at most
@@ -231,6 +234,7 @@ impl SyncEvidence {
             "reconciles": self.reconciles,
             "merges": self.merges,
             "conflictsResolved": self.conflicts_total,
+            "tombstonesPurged": self.tombstones_purged,
             "lastReconcileAgeMs": self.last_reconcile_ms.map(|t| now.saturating_sub(t)),
             "lastConflict": self.last_conflict,
         })
@@ -252,6 +256,10 @@ struct Shared {
     clock: Option<Mutex<Vec<ClockPeerEvidence>>>,
     /// whether `GET /metrics` is open (the `metrics` section of the configuration file)
     metrics: bool,
+    /// the retention window of tombstones in ms; None (the default) keeps them for ever
+    retention_ms: Option<u64>,
+    /// when each tombstone was deleted (only filled with a window on; see retention.rs)
+    deleted_at: Mutex<DeletedAt>,
 }
 
 /// What this node knows of its exchange with one peer.
@@ -282,6 +290,8 @@ pub struct Extra {
     pub clock: Option<ClockSync>,
     /// `GET /metrics` answers only with this (off by default: the route answers like an unknown path)
     pub metrics: bool,
+    /// Drop a tombstone once it was deleted more than this many milliseconds ago (off by default; see retention.rs for the risk)
+    pub tombstone_retention_ms: Option<u64>,
 }
 
 /// The clock measurements: how, and against which peers.
@@ -306,6 +316,7 @@ impl Default for Extra {
             gossip: None,
             clock: None,
             metrics: false,
+            tombstone_retention_ms: None,
         }
     }
 }
@@ -371,6 +382,8 @@ pub fn run_with(
         max_generation_jump: extra.max_generation_jump,
         gossip: Mutex::new(peers),
         metrics: extra.metrics,
+        retention_ms: extra.tombstone_retention_ms,
+        deleted_at: Mutex::new(DeletedAt::default()),
         clock: extra.clock.as_ref().map(|c| {
             Mutex::new(
                 c.peers
@@ -385,6 +398,11 @@ pub fn run_with(
             )
         }),
     });
+    if let Some(retention_ms) = extra.tombstone_retention_ms {
+        note_deletions(&shared, &shared.state.lock().unwrap(), &[]);
+        let shared = Arc::clone(&shared);
+        thread::spawn(move || retention_loop(&shared, retention_ms));
+    }
     if let Some(clock) = extra.clock.clone() {
         let shared = Arc::clone(&shared);
         thread::spawn(move || clock_loop(&shared, &clock));
@@ -511,7 +529,8 @@ fn serve(server: &Server, shared: &Shared) {
                 .is_some_and(|(_, q)| q.split('&').any(|p| p == "full=1"))
             {
                 // every entry with its stamp, tombstones included: what a peer needs to merge
-                let entries = state_entries(&shared.state.lock().unwrap());
+                let entries =
+                    with_deletion_times(shared, state_entries(&shared.state.lock().unwrap()));
                 write_json(request, 200, &json!({ "entries": entries }));
                 continue;
             }
@@ -655,6 +674,7 @@ fn reconcile_request(shared: &Shared, scenario: &Scenario) -> (u16, serde_json::
                 }
             }
             *state = merged;
+            note_deletions(shared, &state, &[]);
             drop(state);
             let mut evidence = shared.evidence.lock().unwrap();
             evidence.reconciles += 1;
@@ -690,6 +710,7 @@ fn merge_request(shared: &Shared, entries: &[StampedEntry]) -> (u16, serde_json:
                 }
             }
             *state = merged;
+            note_deletions(shared, &state, entries);
             drop(state);
             let mut evidence = shared.evidence.lock().unwrap();
             evidence.merges += 1;
@@ -738,7 +759,8 @@ fn gossip_round(shared: &Shared, config: &GossipConfig) {
             }
             let mut pushed = 0;
             if config.push {
-                let ours = state_entries(&shared.state.lock().unwrap());
+                let ours =
+                    with_deletion_times(shared, state_entries(&shared.state.lock().unwrap()));
                 if !ours.is_empty() {
                     gossip::push(peer, token, &ours)?;
                     pushed = ours.len() as u64;
@@ -825,6 +847,64 @@ fn clock_loop(shared: &Shared, clock: &ClockSync) {
     loop {
         clock_round(shared, clock);
         thread::sleep(std::time::Duration::from_millis(clock.config.interval_ms));
+    }
+}
+
+/// With a retention window on, brings the table of deletion times in line with the state that was just stored; `hints` are the entries that
+/// came with the change (they may carry `deletedAtMs`). Called with the state lock held.
+fn note_deletions(shared: &Shared, state: &LwwMap<String, String>, hints: &[StampedEntry]) {
+    if shared.retention_ms.is_some() {
+        shared
+            .deleted_at
+            .lock()
+            .unwrap()
+            .observe(state, hints, now_ms());
+    }
+}
+
+/// Dates the tombstones among `entries` for a peer (only with a retention window on; otherwise the entries go out as they are).
+fn with_deletion_times(shared: &Shared, mut entries: Vec<StampedEntry>) -> Vec<StampedEntry> {
+    if shared.retention_ms.is_some() {
+        shared.deleted_at.lock().unwrap().attach(&mut entries);
+    }
+    entries
+}
+
+/// Drops the tombstones deleted more than the retention window ago. Persists before it replaces the state, like a merge.
+fn drop_expired_tombstones(shared: &Shared) {
+    let Some(retention_ms) = shared.retention_ms else {
+        return;
+    };
+    let mut state = shared.state.lock().unwrap();
+    let now = now_ms();
+    let mut table = shared.deleted_at.lock().unwrap();
+    let expired = table.expired(&state, now, retention_ms);
+    if expired.is_empty() {
+        return;
+    }
+    let mut next = state.clone();
+    let purged = next.purge_tombstones(&expired);
+    if purged == 0 {
+        return;
+    }
+    if let Some(path) = &shared.state_path {
+        if let Err(e) = store::save(path, &next) {
+            eprintln!("[swarm-sync] tombstones were not dropped: could not persist state to {path:?}: {e}");
+            return;
+        }
+    }
+    *state = next;
+    table.observe(&state, &[], now);
+    drop(table);
+    drop(state);
+    shared.evidence.lock().unwrap().tombstones_purged += purged as u64;
+}
+
+fn retention_loop(shared: &Shared, retention_ms: u64) {
+    let pause = std::time::Duration::from_millis((retention_ms / 4).clamp(50, 60_000));
+    loop {
+        thread::sleep(pause);
+        drop_expired_tombstones(shared);
     }
 }
 
@@ -1763,6 +1843,7 @@ mod tests {
             }),
             clock: None,
             metrics: false,
+            tombstone_retention_ms: None,
         }
     }
 
@@ -1801,6 +1882,199 @@ mod tests {
         );
         assert!(stats["peers"][0]["lastError"].is_null());
         assert!(stats["sync"]["merges"].as_u64().unwrap() >= 1);
+    }
+
+    fn with_retention(ms: u64) -> Extra {
+        Extra {
+            tombstone_retention_ms: Some(ms),
+            ..Extra::default()
+        }
+    }
+
+    fn start_node_at(state_path: Option<std::path::PathBuf>, extra: Extra) -> u16 {
+        let server = bind("127.0.0.1:0").unwrap();
+        let port = server.server_addr().to_ip().unwrap().port();
+        thread::spawn(move || {
+            run_with(
+                server,
+                LwwMap::new(),
+                state_path,
+                None,
+                crate::reconcile::DEFAULT_MAX_TIME_JUMP,
+                extra,
+            )
+        });
+        port
+    }
+
+    fn has_key(entries: &serde_json::Value, key: &str) -> bool {
+        entries.as_array().unwrap().iter().any(|e| e["key"] == key)
+    }
+
+    fn purged(port: u16) -> u64 {
+        let (_, stats) = get(port, "/stats");
+        let stats: serde_json::Value = serde_json::from_str(&stats).unwrap();
+        stats["sync"]["tombstonesPurged"].as_u64().unwrap()
+    }
+
+    const DELETED: &str = r#"{"cells":[{"id":"a","writer":1,"writes":[
+        {"key":"one","value":"1","time":2},
+        {"key":"two","value":"2","time":3},
+        {"key":"two","deleted":true,"time":4}]}]}"#;
+
+    #[test]
+    fn with_a_retention_window_an_old_tombstone_is_dropped_and_a_live_key_is_not() {
+        let port = start_node_at(None, with_retention(200));
+        assert_eq!(post(port, "/reconcile", DELETED).0, 200);
+        assert!(
+            has_key(&full_entries(port), "two"),
+            "a tombstone is kept until the window is over"
+        );
+        wait_for("the tombstone to be dropped", || purged(port) >= 1);
+        let entries = full_entries(port);
+        assert!(!has_key(&entries, "two"), "{entries}");
+        assert!(has_key(&entries, "one"));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&get(port, "/state").1).unwrap(),
+            json!({"one": "1"})
+        );
+    }
+
+    #[test]
+    fn without_a_retention_window_nothing_is_dropped_and_no_time_is_sent() {
+        let port = start_node_at(None, Extra::default());
+        assert_eq!(post(port, "/reconcile", DELETED).0, 200);
+        thread::sleep(std::time::Duration::from_millis(500));
+        let entries = full_entries(port);
+        assert!(has_key(&entries, "two"));
+        assert!(
+            entries
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|e| e.get("deletedAtMs").is_none()),
+            "{entries}"
+        );
+        assert_eq!(purged(port), 0);
+    }
+
+    #[test]
+    fn with_a_window_the_tombstones_it_sends_carry_their_time() {
+        let port = start_node_at(None, with_retention(3_600_000));
+        let before = now_ms();
+        assert_eq!(post(port, "/reconcile", DELETED).0, 200);
+        let entries = full_entries(port);
+        let two = entries
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["key"] == "two")
+            .unwrap();
+        let at = two["deletedAtMs"].as_u64().expect("a tombstone is dated");
+        assert!(at >= before && at <= now_ms(), "{at}");
+        let one = entries
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["key"] == "one")
+            .unwrap();
+        assert!(
+            one.get("deletedAtMs").is_none(),
+            "a live entry has no deletion time"
+        );
+    }
+
+    #[test]
+    fn a_tombstone_that_arrives_with_an_old_time_is_dropped_and_one_without_a_time_is_dated_on_arrival(
+    ) {
+        let port = start_node_at(None, with_retention(5_000));
+        let old = r#"{"entries":[{"key":"old","value":null,"time":5,"writer":2,"generation":1,"deletedAtMs":1}]}"#;
+        let bare =
+            r#"{"entries":[{"key":"bare","value":null,"time":6,"writer":2,"generation":1}]}"#;
+        let future = r#"{"entries":[{"key":"future","value":null,"time":7,"writer":2,"generation":1,"deletedAtMs":99999999999999}]}"#;
+        for body in [old, bare, future] {
+            assert_eq!(post(port, "/merge", body).0, 200, "{body}");
+        }
+        wait_for("the old tombstone to be dropped", || {
+            !has_key(&full_entries(port), "old")
+        });
+        let entries = full_entries(port);
+        let at = |key: &str| {
+            entries
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["key"] == key)
+                .unwrap()["deletedAtMs"]
+                .as_u64()
+                .unwrap()
+        };
+        assert!(at("bare") <= now_ms() && at("bare") > now_ms() - 5_000);
+        assert!(
+            at("future") <= now_ms(),
+            "a time in the future is taken as now"
+        );
+    }
+
+    #[test]
+    fn the_drop_is_saved_and_survives_a_restart() {
+        let dir = std::env::temp_dir().join(format!("swarm-sync-retention-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("state.json");
+        let port = start_node_at(Some(path.clone()), with_retention(200));
+        assert_eq!(post(port, "/reconcile", DELETED).0, 200);
+        wait_for("the tombstone to be dropped", || purged(port) >= 1);
+        let keys: Vec<String> = state_entries(&store::load(&path).unwrap())
+            .into_iter()
+            .map(|e| e.key)
+            .collect();
+        assert_eq!(keys, vec!["one".to_string()]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn two_nodes_agree_on_the_time_of_a_delete_so_they_drop_it_together() {
+        let a = start_node_at(None, with_retention(3_600_000));
+        assert_eq!(post(a, "/reconcile", DELETED).0, 200);
+        let mut extra = gossip_to(&[a], false);
+        extra.tombstone_retention_ms = Some(3_600_000);
+        let b = start_node_at(None, extra);
+        wait_for("B to hold the tombstone", || {
+            has_key(&full_entries(b), "two")
+        });
+        let time = |p: u16| {
+            full_entries(p)
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["key"] == "two")
+                .unwrap()["deletedAtMs"]
+                .clone()
+        };
+        assert_eq!(
+            time(a),
+            time(b),
+            "B took the time A reported, not its own clock"
+        );
+    }
+
+    #[test]
+    fn a_node_without_a_window_still_merges_what_a_node_with_one_sends() {
+        let a = start_node_at(None, with_retention(3_600_000));
+        assert_eq!(post(a, "/reconcile", DELETED).0, 200);
+        let b = start_node_at(None, gossip_to(&[a], false));
+        wait_for("B to hold the tombstone", || {
+            has_key(&full_entries(b), "two")
+        });
+        let entries = full_entries(b);
+        assert!(entries
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e.get("deletedAtMs").is_none()));
+        let state =
+            |p: u16| serde_json::from_str::<serde_json::Value>(&get(p, "/state").1).unwrap();
+        assert_eq!(state(a), state(b));
     }
 
     #[test]
@@ -1921,6 +2195,7 @@ mod tests {
                     .collect(),
             }),
             metrics: false,
+            tombstone_retention_ms: None,
         }
     }
 

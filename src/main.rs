@@ -26,6 +26,7 @@ mod entries;
 mod gossip;
 mod lamport;
 mod reconcile;
+mod retention;
 mod server;
 mod service_metrics;
 mod store;
@@ -131,6 +132,17 @@ fn run_serve(args: &[String]) -> ExitCode {
         None => 10_000,
     };
     let gossip_push = args.iter().any(|a| a == "--gossip-push");
+    // Dropping old tombstones is off unless a window is given: a node that is away longer than the window may bring deleted keys back (retention.rs).
+    let tombstone_retention_ms = match find_flag(args, "--tombstone-retention-ms") {
+        Some(raw) => match raw.parse::<u64>() {
+            Ok(n) if n >= 60_000 => Some(n),
+            _ => {
+                eprintln!("[swarm-sync] fatal: --tombstone-retention-ms must be a whole number of at least 60000 (one minute), got {raw:?}");
+                return ExitCode::from(2);
+            }
+        },
+        None => None,
+    };
     // The measurement of the clock of the peers (and GET /time) is off unless the configuration file turns it on.
     // The same file opens `GET /metrics` with its `metrics` section (off unless enabled).
     let mut metrics = false;
@@ -207,6 +219,9 @@ fn run_serve(args: &[String]) -> ExitCode {
                 None => eprintln!("[swarm-sync] SWARM_SYNC_SHARED_SECRET not set: /reconcile and /state have NO caller authentication (LAN-trust mode)"),
             }
             eprintln!("[swarm-sync] POST /merge and GET /state?full=1 exchange the full entries with a peer");
+            if let Some(ms) = tombstone_retention_ms {
+                eprintln!("[swarm-sync] tombstones older than {ms} ms are dropped: a node that was away longer than that and still holds a deleted key brings it back");
+            }
             if let Some(clock) = &clock {
                 eprintln!(
                     "[swarm-sync] clock sync is on: GET /time answers, and {} peer(s) are probed every {} ms (software offset and round trip, not PTP)",
@@ -240,6 +255,7 @@ fn run_serve(args: &[String]) -> ExitCode {
                     gossip,
                     clock,
                     metrics,
+                    tombstone_retention_ms,
                 },
             );
             ExitCode::SUCCESS
@@ -264,7 +280,7 @@ fn main() -> ExitCode {
     let Some(scenario_path) = args.get(1) else {
         eprintln!("Usage: hydra-umc-swarm-sync <scenario.json>");
         eprintln!(
-            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--clock-sync-config FILE] [--allow-anonymous]"
+            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--tombstone-retention-ms N] [--clock-sync-config FILE] [--allow-anonymous]"
         );
         eprintln!("See scenarios/example.json for the expected format.");
         return ExitCode::SUCCESS;

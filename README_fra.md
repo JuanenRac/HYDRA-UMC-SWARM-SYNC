@@ -17,7 +17,7 @@ GPL-3.0-or-later - see LICENSE
 <p align="center">
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="Protocol">
-  <img src="https://img.shields.io/badge/Tests-151%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-169%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.0-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -34,7 +34,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Version | `0.2.0` |
 | Maturité | Fonctionnel |
-| Tests | 151 (`cargo test`) |
+| Tests | 169 (`cargo test`) |
 | Technologie | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
 | Cible | Le Raspberry Pi CM5 d'une cellule HYDRA-UMC |
 | Sur matériel réel | Pas encore : aucune exécution sur du matériel réel n'est consignée pour cette version |
@@ -50,7 +50,7 @@ Chaque ligne est une partie de ce dépôt et le feu dit où elle en est aujourd'
 | Domaine | État | Ce que cela veut dire ici |
 |---|---|---|
 | Logiciel | 🟡 | Fonctionne pour son usage principal ; la vérification d'honnêteté ci-dessus liste ce qui manque encore |
-| Tests | 🟢 | 151 tests automatiques, exécutés à chaque modification |
+| Tests | 🟢 | 169 tests automatiques, exécutés à chaque modification |
 | Matériel réel | 🔴 | Pas encore : aucune exécution sur du matériel réel n'est consignée pour cette version |
 | Interface et protocoles | 🟡 | Les routes ou les messages proposés sont documentés et testés avec un client ; tous les clients ne les ont pas encore utilisés |
 | Intégration | 🟠 | Il fonctionne avec les autres services sur le banc d'essai CM5 et ses messages suivent les contrats partagés du SDK |
@@ -74,6 +74,7 @@ Démarrer et terminer les trajectoires de plusieurs bras à la même microsecond
 * 🔍 **Visibilité réelle des conflits & preuve de convergence à l'échelle de l'essaim (v0) :** `merge_report()` renvoie un enregistrement réel, par clé, de chaque conflit d'écriture réel résolu pendant la réconciliation - quelle cellule a battu quelle autre, et avec quel horodatage. Un test simulé à 4 cellules prouve que la convergence tient sur plusieurs cycles de partition et de reconnexion partielle, pas seulement une fusion unique entre deux cellules.
 * 💾 **Persistance réelle par nœud (`--state-file`) :** L'état CRDT propre du mode `serve` survit désormais à un vrai redémarrage du processus (`src/store.rs`) - chaque `POST /reconcile` fusionne dans l'état de ce nœud et le met à jour durablement au lieu de repartir de zéro à chaque appel - vérifié contre un vrai processus tué puis relancé, pas seulement des tests internes. Non configuré, le comportement original en mémoire seule est conservé. Voir `docs/CLI_REFERENCE.md`.
 * 🔁 **Échange de l'état complet et client de gossip :** `GET /state?full=1` répond avec chaque entrée, son temps, son écrivain et sa génération, clés supprimées (pierres tombales) comprises, et `POST /merge` les accepte, si bien qu'un nœud peut être remis à jour depuis un autre quoi que chacun ait écrit et supprimé entre-temps ; une `Write` d'un scénario peut maintenant porter `"deleted": true`. Les entrées sont vérifiées avant de toucher la carte (taille, un temps au plus `--max-time-jump` en avance, une génération au plus `--max-generation-jump` en avance sur celle de la clé). Avec `--peer http://host:port` (à répéter pour chaque nœud) le nœud demande leur état à ses pairs tous les `--gossip-interval-ms` (au moins 1000) et, avec `--gossip-push`, envoie le sien ; les pairs partagent `SWARM_SYNC_SHARED_SECRET` et `GET /stats` rend compte de chacun. La génération est comparée avant le temps (une réplique qui a supprimé et recréé une clé plus souvent l'emporte sur une écriture simple plus tardive), et un conflit rapporté donne maintenant les deux générations. *(essayé entre nœuds d'une même machine ; jamais à travers une vraie partition)*
+* 🧹 **Abandon des vieux tombstones (facultatif, désactivé par défaut) :** `--tombstone-retention-ms N` (au moins une minute) abandonne un tombstone lorsque sa suppression date de plus de N millisecondes, comptées depuis un `deletedAtMs` en heure murale qui voyage avec le tombstone (facultatif dans le format d'échange : les nœuds qui ne le connaissent pas l'ignorent, et une entrée sans lui est datée à l'arrivée). **Risque :** un nœud absent plus longtemps que la fenêtre et qui garde encore une clé supprimée la ressuscite en se reconnectant ; choisissez donc une fenêtre bien plus longue que la plus longue panne que vous acceptez. *(implémenté ; essayé entre nœuds sur une seule machine, jamais à travers une vraie partition)*
 * 🔐 **Authentification par secret partagé réelle, optionnelle (`SWARM_SYNC_SHARED_SECRET`) :** non configurée, ce projet garde sa posture originale de confiance LAN - n'importe quel appelant peut faire `POST /reconcile` ou `GET /state`. Configurée (variable d'environnement uniquement, jamais un flag CLI - un secret partagé appartient à l'environnement/l'unité systemd, pas à une liste de processus), les deux routes exigent un `Authorization: Bearer <token>` correspondant, vérifié en temps constant. `GET /stats` reste ouvert dans les deux cas.
 * 🧱 **Refuse d'être un nœud ouvert sur le réseau, et corps de requête bornés (v0) :** `serve` sur une adresse autre que loopback exige `SWARM_SYNC_SHARED_SECRET` (ou un `--allow-anonymous` explicite pour un laboratoire), car un nœud qui fusionne tout ce que lui envoie n'importe quelle machine du réseau laisse cette machine réécrire la vision que l'essaim a de lui-même ; les corps de requête de plus de 1 Mio sont refusés avec `413` avant d'être lus ; et le fichier d'état est forcé sur le disque avant de remplacer le précédent, de sorte qu'une coupure de courant ne puisse pas laisser un état tronqué ou vide. *(implémenté)*
 * 📜 **Historique des conflits :** `GET /conflicts` liste les conflits que ce nœud a résolus (clé, écrivain gagnant, écrivain perdant et heure), le plus récent d'abord, jusqu'aux 200 derniers ou `?limit=N` ; `/stats` ne gardait que le dernier. Il demande le secret partagé quand il y en a un, comme `/state`.
@@ -153,7 +154,7 @@ Nécessite la chaîne d'outils Rust stable (édition 2021) avec `cargo`.
 
 ## 🧪 Tests
 
-151 tests automatiques s'exécutent avec `cargo test`. Ils n'ont besoin ni de matériel ni de rien en dehors de cette machine.
+169 tests automatiques s'exécutent avec `cargo test`. Ils n'ont besoin ni de matériel ni de rien en dehors de cette machine.
 
 La CI exécute `HYDRA_UMC_CI=1 python tools/ci_validate.py`, qui vérifie le manifeste, les documents, les huit README et les images.
 
@@ -215,7 +216,7 @@ cargo test   # l'horloge de Lamport, et le CRDT lui-meme - avec des
              # propre de detection de conflits de merge_report(), et une
              # simulation a 4 cellules prouvant la convergence sur
              # plusieurs cycles de partition et reconnexion partielle -
-             # 151 tests au total
+             # 169 tests au total
 ```
 
 Le même appel à `reconcile()` est aussi accessible via une véritable API

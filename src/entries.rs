@@ -36,6 +36,14 @@ pub struct StampedEntry {
     pub time: u64,
     pub writer: u64,
     pub generation: u64,
+    /// Wall-clock milliseconds of the delete, on a tombstone only, and only from a node that keeps a retention window (retention.rs). A node
+    /// that does not know the field ignores it, and an entry without it is dated when it is first seen.
+    #[serde(
+        default,
+        rename = "deletedAtMs",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub deleted_at_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,6 +76,7 @@ pub fn state_entries(map: &LwwMap<String, String>) -> Vec<StampedEntry> {
             time: time.0,
             writer,
             generation,
+            deleted_at_ms: None,
         })
         .collect()
 }
@@ -209,6 +218,7 @@ mod tests {
             time,
             writer,
             generation,
+            deleted_at_ms: None,
         }
     }
 
@@ -474,5 +484,29 @@ mod tests {
         let b_after = link.send(&a, b.clone());
         assert_eq!(state_entries(&a_after), state_entries(&b_after));
         assert!(a_after.get(&key.to_string()).unwrap().contains("arm-2"));
+    }
+
+    #[test]
+    fn the_deletion_time_is_optional_in_both_directions() {
+        // an entry from a node that does not send it
+        let old: StampedEntry =
+            serde_json::from_str(r#"{"key":"k","value":null,"time":3,"writer":1,"generation":2}"#)
+                .unwrap();
+        assert_eq!(old.deleted_at_ms, None);
+        // and it is left out of what such an entry sends back
+        let text = serde_json::to_string(&old).unwrap();
+        assert!(!text.contains("deletedAtMs"), "{text}");
+        let with: StampedEntry = serde_json::from_str(
+            r#"{"key":"k","value":null,"time":3,"writer":1,"generation":2,"deletedAtMs":1700}"#,
+        )
+        .unwrap();
+        assert_eq!(with.deleted_at_ms, Some(1700));
+        assert!(serde_json::to_string(&with)
+            .unwrap()
+            .contains(r#""deletedAtMs":1700"#));
+        // the time does not take part in what the merge decides: the same stamp with and without it is the same entry for the map
+        let (_, a) = merge_entries(std::slice::from_ref(&old), LwwMap::new()).unwrap();
+        let (_, b) = merge_entries(&[with], LwwMap::new()).unwrap();
+        assert_eq!(state_entries(&a), state_entries(&b));
     }
 }

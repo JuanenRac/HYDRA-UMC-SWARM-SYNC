@@ -17,7 +17,7 @@ GPL-3.0-or-later - see LICENSE
 <p align="center">
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="Protocol">
-  <img src="https://img.shields.io/badge/Tests-151%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-169%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.0-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -34,7 +34,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | 版本 | `0.2.0` |
 | 成熟度 | 可用 |
-| 测试 | 151 (`cargo test`) |
+| 测试 | 169 (`cargo test`) |
 | 技术栈 | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
 | 目标 | HYDRA-UMC 工作单元的 Raspberry Pi CM5 |
 | 真实硬件 | 尚未：此版本没有在真实硬件上运行的记录 |
@@ -50,7 +50,7 @@ GPL-3.0-or-later - see LICENSE
 | 领域 | 状态 | 在这里的含义 |
 |---|---|---|
 | 软件 | 🟡 | 主要用途可用；上面的诚实性检查列出了仍然缺少的内容 |
-| 测试 | 🟢 | 151 项自动测试，每次变更都会运行 |
+| 测试 | 🟢 | 169 项自动测试，每次变更都会运行 |
 | 真实硬件 | 🔴 | 尚未：此版本没有在真实硬件上运行的记录 |
 | 接口与协议 | 🟡 | 提供的路由或消息已有文档，并用客户端测试过；尚未被所有客户端使用 |
 | 集成 | 🟠 | 在 CM5 测试台上与其他服务一起运行，其消息遵循 SDK 的共享契约 |
@@ -74,6 +74,7 @@ GPL-3.0-or-later - see LICENSE
 * 🔍 **真实的冲突可见性与集群规模的收敛证明（v0）：** `merge_report()` 会返回一份真实的、按键分类的记录，列出协调过程中解决的每一个真实写入冲突——哪个单元战胜了哪个单元，用的是什么时间戳。一个 4 单元的模拟测试证明了收敛性在多轮分区和部分重连中依然成立，而不仅仅是两个单元之间的一次性合并。
 * 💾 **真实的按节点持久化(`--state-file`):** `serve` 模式自身的 CRDT 状态现在能在真实的进程重启后存活(`src/store.rs`)——每次 `POST /reconcile` 都会合并进该节点自身的状态并持久化更新,而不是每次调用都从零开始——已针对真实的、被终止后重新启动的进程完成验证,而不仅仅是进程内测试。未配置时,保持原有的纯内存行为。详见 `docs/CLI_REFERENCE.md`。
 * 🔁 **完整状态交换与 gossip 客户端:** `GET /state?full=1` 返回每个条目及其时间、写入者和世代(包括已删除的键,即墓碑),`POST /merge` 接收它们,因此无论双方在此期间写入或删除了什么,一个节点都能从另一个节点追平;场景中的 `Write` 现在可以带 `"deleted": true`。条目在触及映射之前会被检查(大小、时间最多领先 `--max-time-jump`、世代最多领先该键自身世代 `--max-generation-jump`)。使用 `--peer http://host:port`(每个节点重复一次)时,节点每隔 `--gossip-interval-ms`(至少 1000)向对等节点索取状态,并在加 `--gossip-push` 时发送自己的状态;对等节点共享 `SWARM_SYNC_SHARED_SECRET`,`GET /stats` 报告每个对等节点。世代先于时间比较(多次删除并重建某个键的副本会胜过之后的普通写入),报告的冲突现在会写出两边的世代。*(已在同一台机器上的节点之间试过,从未在真实分区中验证)*
+* 🧹 **丢弃旧的 tombstone（可选，默认关闭）：** `--tombstone-retention-ms N`（至少一分钟）会在某个 tombstone 的删除时间超过 N 毫秒后将其丢弃，时间从随 tombstone 一起传递的墙上时钟 `deletedAtMs` 算起（在交换格式中是可选的：不认识该字段的节点会忽略它，没有该字段的条目在到达时标注时间）。**风险：** 离线时间超过窗口、且仍保存着已删除键的节点，重新连接时会让该键复活，因此请选择远长于你能接受的最长中断的窗口。*（已实现；仅在一台机器上的节点之间试验过，从未在真实分区中验证）*
 * 🔐 **真实的可选共享密钥认证(`SWARM_SYNC_SHARED_SECRET`):** 未配置时,本项目保持原有的局域网信任姿态——任何调用方都可以执行 `POST /reconcile` 或 `GET /state`。配置后(仅通过环境变量,绝不通过命令行参数——共享密钥应属于环境变量/systemd 单元,而非进程列表),两个路由都要求携带匹配的 `Authorization: Bearer <token>`,并以恒定时间比较。`GET /stats` 在两种情况下都保持开放。
 * 🧱 **拒绝成为网络上的开放节点，且请求体有上限（v0）：** 在非回环地址上运行 `serve` 需要 `SWARM_SYNC_SHARED_SECRET`（实验室环境可显式使用 `--allow-anonymous`），因为一个会合并网络上任意机器所发送内容的节点，会让该机器改写蜂群对自身的认知；超过 1 MiB 的请求体会在读取之前就被以 `413` 拒绝；状态文件在替换旧文件之前会被强制写入磁盘，因此断电不会留下被截断或为空的状态。*（已实现）*
 * 📜 **冲突历史:** `GET /conflicts` 按从新到旧列出此节点解决过的冲突(键、胜出的写入方、落败的写入方和时间)，最多最近 200 条，或用 `?limit=N`；`/stats` 以前只保留最后一条。设置了共享密钥时，它和 `/state` 一样需要该密钥。
@@ -153,7 +154,7 @@ flowchart TD
 
 ## 🧪 测试
 
-运行 `cargo test` 会执行 151 个自动测试。 不需要硬件，也不需要这台机器以外的任何东西。
+运行 `cargo test` 会执行 169 个自动测试。 不需要硬件，也不需要这台机器以外的任何东西。
 
 CI 运行 `HYDRA_UMC_CI=1 python tools/ci_validate.py`，检查清单、文档、八个 README 和图片。
 

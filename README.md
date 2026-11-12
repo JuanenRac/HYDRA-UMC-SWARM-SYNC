@@ -17,7 +17,7 @@ GPL-3.0-or-later - see LICENSE
 <p align="center">
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="Protocol">
-  <img src="https://img.shields.io/badge/Tests-151%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-169%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.0-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -34,7 +34,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Version | `0.2.0` |
 | Maturity | Functional |
-| Tests | 151 (`cargo test`) |
+| Tests | 169 (`cargo test`) |
 | Stack | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
 | Target | The Raspberry Pi CM5 of a HYDRA-UMC cell |
 | On real hardware | Not yet: no run on real hardware is recorded for this version |
@@ -50,7 +50,7 @@ Each line is one part of this repository and the light says how far it is today.
 | Area | State | What it means here |
 |---|---|---|
 | Software | 🟡 | Works for its main purpose; the honesty check above lists what is still missing |
-| Tests | 🟢 | 151 automated tests, run on every change |
+| Tests | 🟢 | 169 automated tests, run on every change |
 | Real hardware | 🔴 | Not yet: no run on real hardware is recorded for this version |
 | Interface and protocols | 🟡 | The routes or messages it offers are documented and tested with a client; not every client has used them yet |
 | Integration | 🟠 | It runs together with the other services on the CM5 test bench and its messages follow the shared contracts of the SDK |
@@ -74,6 +74,7 @@ Starting and ending the trajectories of several arms at the same microsecond, or
 * 🔍 **Real Conflict Visibility & Swarm-Scale Convergence Proof (v0):** `merge_report()` returns a real, per-key record of every genuine write conflict resolved during reconciliation - which cell beat which other cell, and by what stamp. A 4-cell simulated test proves convergence holds across multiple rounds of partition and partial reconnection, not just a single two-cell merge.
 * 💾 **Real Per-Node Persistence (`--state-file`):** `serve` mode's own CRDT state now survives a real process restart (`src/store.rs`) - every `POST /reconcile` merges into and durably updates this node's own state instead of starting from a blank slate every call, verified against an actual killed-and-relaunched binary, not just in-process tests. Unset, it stays the original memory-only behavior. See `docs/CLI_REFERENCE.md`.
 * 🔁 **Exchange of full state and a gossip client:** `GET /state?full=1` answers every entry with its time, writer and generation, deleted keys (tombstones) included, and `POST /merge` takes them, so a node can be brought up to date from another one whatever either wrote and deleted meanwhile; a `Write` of a scenario can now carry `"deleted": true`. Entries are checked before they touch the map (size, a time no more than `--max-time-jump` ahead, a generation no more than `--max-generation-jump` ahead of the key's own). With `--peer http://host:port` (repeat for each node) the node asks its peers for their state every `--gossip-interval-ms` (at least 1000) and, with `--gossip-push`, sends its own; the peers share `SWARM_SYNC_SHARED_SECRET`, and `GET /stats` reports each peer. The generation is compared before the time (a replica that deleted and recreated a key more often wins over a later plain write), and a reported conflict now says both generations. *(tried between nodes on one machine; never across a real partition)*
+* 🧹 **Dropping old tombstones (optional, off by default):** `--tombstone-retention-ms N` (at least one minute) drops a tombstone once its delete is more than N milliseconds old, counted from a wall-clock `deletedAtMs` that travels with the tombstone (optional in the exchange format: nodes that do not know it ignore it, and an entry without it is dated on arrival). **Risk:** a node away for longer than the window that still holds a deleted key brings it back to life when it reconnects, so choose a window far longer than the longest outage you accept. *(implemented; tried between nodes on one machine, never across a real partition)*
 * 🔐 **Real Opt-In Shared-Secret Authentication (`SWARM_SYNC_SHARED_SECRET`):** unset, this project keeps its original LAN-trust posture - any caller can `POST /reconcile` or `GET /state`. Set (env var only, never a CLI flag - a shared secret belongs in the environment/systemd unit, not a process listing), both routes require a matching `Authorization: Bearer <token>`, checked in constant time. `GET /stats` stays open either way.
 * 🧱 **Refuses to be an open node on the network, and bounded bodies (v0):** `serve` on an address other than loopback needs `SWARM_SYNC_SHARED_SECRET` (or an explicit `--allow-anonymous` for a lab), because a node that merges whatever any machine on the network sends it lets that machine rewrite the swarm's view of itself; request bodies over 1 MiB are refused with `413` before they are read; and the state file is forced to disk before it replaces the previous one, so a power cut cannot leave a truncated or empty state behind. *(implemented)*
 * 📜 **Conflict history:** `GET /conflicts` lists the conflicts this node resolved (key, winning writer, losing writer and time), newest first, up to the latest 200 or `?limit=N`; `/stats` only kept the last one. It asks for the shared secret when one is set, like `/state`.
@@ -153,7 +154,7 @@ Requires the stable Rust toolchain (edition 2021) with `cargo`.
 
 ## 🧪 Testing
 
-151 automated tests run with `cargo test`. They need no hardware and nothing outside this machine.
+169 automated tests run with `cargo test`. They need no hardware and nothing outside this machine.
 
 The CI runs `HYDRA_UMC_CI=1 python tools/ci_validate.py`, which checks the manifest, the documents, the eight READMEs and the pictures.
 
@@ -211,7 +212,7 @@ cargo test   # the Lamport clock, and the CRDT itself - including direct
              # deterministic-tie-break test for truly concurrent writes,
              # merge_report()'s own conflict-detection behavior, and a
              # 4-cell simulation proving convergence across multiple
-             # rounds of partition and partial reconnection - 151 tests total
+             # rounds of partition and partial reconnection - 169 tests total
 ```
 
 The same `reconcile()` call is also reachable over a real JSON/HTTP API

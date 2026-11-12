@@ -33,7 +33,7 @@ $ hydra-umc-swarm-sync
 HYDRA-UMC-SWARM-SYNC v0.1.3
 CRDT swarm state reconciliation service: merges every HydraNode cell's view of swarm state into one convergent, order-independent result.
 Usage: hydra-umc-swarm-sync <scenario.json>
-       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--clock-sync-config FILE] [--allow-anonymous]
+       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--tombstone-retention-ms N] [--clock-sync-config FILE] [--allow-anonymous]
 See scenarios/example.json for the expected format.
 ```
 
@@ -261,10 +261,15 @@ The map keeps strings, but what is written under the key `robot_state/<robot_id>
 | `--peer http://host:port` | A node to ask for its state; repeat for each one. Only `http://` is spoken (a peer behind TLS is reached through a tunnel). The node sends `SWARM_SYNC_SHARED_SECRET` as the bearer token, so the peers must share it |
 | `--gossip-interval-ms N` | Pause between two rounds, at least 1000 (default 10000) |
 | `--gossip-push` | Also send this node's state to each peer (`POST /merge`) after pulling theirs |
+| `--tombstone-retention-ms N` | Drop a tombstone once its delete is more than N milliseconds old (at least 60000; **off by default**, tombstones are then kept for ever). See the risk below |
 | `--max-generation-jump N` | How far past the generation this node holds for a key an incoming entry may be (default 1000) |
 | `--presence delete-wins\|add-wins` | How a delete and a concurrent add of the same key are resolved. `delete-wins` (default): a delete beats every add of the same life, even one with a later time. `add-wins`: an add later than the delete, which therefore did not see it, survives; an add of an earlier life or an earlier time still loses. Every node of a swarm must use the same value |
 
 Routes: `GET /state?full=1` answers `{"entries": [{"key", "value" (null for a deleted key), "time", "writer", "generation"}]}`; `POST /merge` takes `{"entries": [...]}` of that shape and answers `entries_received`, `conflicts_resolved`, `conflicts` (each with both generations) and `next_local_time`; an entry with a time or a generation too far ahead, an empty or oversized key, a value over 64 KiB or generation 0 is refused with `422`, the same stamp claiming two values with `400`. A `Write` of a `/reconcile` scenario may carry `"deleted": true` (its `value` is then ignored). `GET /stats` adds `peers` (rounds, last success age, last error, entries pulled and pushed per peer) and `sync.merges`.
+
+**Dropping old tombstones (`--tombstone-retention-ms`, off by default).** A tombstone is what stops a node that never heard of a delete from bringing the key back, so it can be dropped only when no node can still hold an older live copy. Nothing in the swarm can prove that, so the operator states it with a window: a tombstone deleted more than N milliseconds ago is dropped (the check runs about four times per window, at most once a minute, and the result is saved like any merge; `GET /stats` shows `sync.tombstonesPurged`). **The risk:** a node that was away longer than the window and still holds a live copy of a key deleted meanwhile brings that key back to life when it reconnects, because the tombstone that would have beaten it is gone. Choose a window much longer than the longest outage you accept, and keep the clocks of the nodes close to each other: the age is counted in wall-clock time.
+
+**Exchange format.** With a window on, a node sends `deletedAtMs` (wall-clock milliseconds of the delete) on each tombstone it can date, in `GET /state?full=1` and in the pushes of `--gossip-push`; the field is left out of live entries and of every entry when the window is off. It is optional in both directions: a node that does not know it ignores it (the entry is otherwise unchanged), and an entry that arrives without it is dated when this node first sees it, which only keeps it longer. A time in the future is taken as the moment it arrived, and when two nodes report different times for one tombstone the earliest is kept, so they drop it together after one exchange. The time never takes part in the order of two entries (generation, time, writer), so the merge and the winner of a conflict are exactly what they were. The dates are kept in memory: after a restart the tombstones that were loaded from the state file are dated at the restart, so their window starts again. A node that has dropped a tombstone takes it back when a peer that still holds it sends it, and drops it again when the window says so.
 
 ## Typed values: missions and zone reservations
 

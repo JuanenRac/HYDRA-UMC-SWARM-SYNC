@@ -17,7 +17,7 @@ GPL-3.0-or-later - see LICENSE
 <p align="center">
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="Protocol">
-  <img src="https://img.shields.io/badge/Tests-151%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-169%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.0-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -34,7 +34,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Version | `0.2.0` |
 | Reifegrad | Funktionsfähig |
-| Tests | 151 (`cargo test`) |
+| Tests | 169 (`cargo test`) |
 | Technik | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
 | Ziel | Der Raspberry Pi CM5 einer HYDRA-UMC-Zelle |
 | Auf echter Hardware | Noch nicht: für diese Version ist kein Lauf auf echter Hardware vermerkt |
@@ -50,7 +50,7 @@ Jede Zeile ist ein Teil dieses Repositorys, und die Ampel sagt, wie weit er heut
 | Bereich | Stand | Was das hier bedeutet |
 |---|---|---|
 | Software | 🟡 | Funktioniert für seinen Hauptzweck; die Ehrlichkeitsprüfung oben nennt, was noch fehlt |
-| Tests | 🟢 | 151 automatische Tests, bei jeder Änderung ausgeführt |
+| Tests | 🟢 | 169 automatische Tests, bei jeder Änderung ausgeführt |
 | Echte Hardware | 🔴 | Noch nicht: für diese Version ist kein Lauf auf echter Hardware vermerkt |
 | Schnittstelle und Protokolle | 🟡 | Die angebotenen Routen oder Nachrichten sind dokumentiert und mit einem Client getestet; noch nicht jeder Client hat sie benutzt |
 | Integration | 🟠 | Es läuft zusammen mit den anderen Diensten auf dem CM5-Prüfstand, und seine Nachrichten folgen den gemeinsamen Verträgen des SDK |
@@ -74,6 +74,7 @@ Die Trajektorien mehrerer Arme in derselben Mikrosekunde zu starten und zu beend
 * 🔍 **Echte Konfliktsichtbarkeit & Konvergenzbeweis auf Schwarmebene (v0):** `merge_report()` liefert einen echten, pro Schlüssel aufgeschlüsselten Datensatz jedes echten Schreibkonflikts, der während der Abstimmung aufgelöst wurde - welche Zelle welche andere geschlagen hat, und mit welchem Zeitstempel. Ein simulierter 4-Zellen-Test beweist, dass die Konvergenz über mehrere Runden von Partitionierung und teilweiser Wiederverbindung hinweg hält, nicht nur bei einem einzigen Merge zwischen zwei Zellen.
 * 💾 **Echte Persistenz pro Knoten (`--state-file`):** Der eigene CRDT-Zustand des `serve`-Modus übersteht jetzt einen echten Prozessneustart (`src/store.rs`) - jeder `POST /reconcile` wird in den Zustand dieses Knotens eingemischt und dauerhaft aktualisiert, statt bei jedem Aufruf bei null anzufangen - verifiziert gegen einen echten abgebrochenen und neu gestarteten Prozess, nicht nur In-Process-Tests. Ohne Angabe bleibt das ursprüngliche, rein speicherbasierte Verhalten erhalten. Siehe `docs/CLI_REFERENCE.md`.
 * 🔁 **Austausch des vollen Zustands und ein Gossip-Client:** `GET /state?full=1` antwortet mit jedem Eintrag samt Zeit, Schreiber und Generation, gelöschte Schlüssel (Tombstones) eingeschlossen, und `POST /merge` nimmt sie entgegen, so dass ein Knoten von einem anderen auf den Stand gebracht werden kann, was auch immer beide inzwischen geschrieben und gelöscht haben; ein `Write` eines Szenarios kann nun `"deleted": true` tragen. Einträge werden geprüft, bevor sie die Map berühren (Größe, eine Zeit höchstens `--max-time-jump` voraus, eine Generation höchstens `--max-generation-jump` vor der des Schlüssels). Mit `--peer http://host:port` (für jeden Knoten wiederholen) fragt der Knoten seine Peers alle `--gossip-interval-ms` (mindestens 1000) nach ihrem Zustand und sendet mit `--gossip-push` auch seinen eigenen; die Peers teilen `SWARM_SYNC_SHARED_SECRET`, und `GET /stats` meldet jeden Peer. Die Generation wird vor der Zeit verglichen (eine Replik, die einen Schlüssel öfter gelöscht und neu angelegt hat, gewinnt gegen einen späteren einfachen Schreibvorgang), und ein gemeldeter Konflikt nennt nun beide Generationen. *(zwischen Knoten auf einem Rechner erprobt; nie über eine echte Partition)*
+* 🧹 **Verwerfen alter Tombstones (optional, standardmäßig aus):** `--tombstone-retention-ms N` (mindestens eine Minute) verwirft einen Tombstone, sobald sein Löschen älter als N Millisekunden ist, gerechnet ab einem Wanduhr-`deletedAtMs`, das mit dem Tombstone wandert (im Austauschformat optional: Knoten, die es nicht kennen, ignorieren es, und ein Eintrag ohne es wird bei Ankunft datiert). **Risiko:** ein Knoten, der länger als das Fenster weg war und noch einen gelöschten Schlüssel hält, erweckt ihn beim Wiederverbinden zum Leben; wähle das Fenster also weit länger als den längsten Ausfall, den du hinnimmst. *(implementiert; zwischen Knoten auf einer Maschine erprobt, nie über eine echte Partition)*
 * 🔐 **Echte optionale Authentifizierung per gemeinsamem Geheimnis (`SWARM_SYNC_SHARED_SECRET`):** ohne Konfiguration behält dieses Projekt seine ursprüngliche LAN-Vertrauensposition bei - jeder Aufrufer kann `POST /reconcile` oder `GET /state` ausführen. Konfiguriert (nur per Umgebungsvariable, nie per CLI-Flag - ein gemeinsames Geheimnis gehört in die Umgebung/systemd-Unit, nicht in eine Prozessliste), verlangen beide Routen einen passenden `Authorization: Bearer <token>`, geprüft in konstanter Zeit. `GET /stats` bleibt in beiden Fällen offen.
 * 🧱 **Weigert sich, ein offener Knoten im Netzwerk zu sein, und begrenzte Anfragekörper (v0):** `serve` auf einer anderen Adresse als Loopback braucht `SWARM_SYNC_SHARED_SECRET` (oder ein ausdrückliches `--allow-anonymous` fürs Labor), denn ein Knoten, der alles übernimmt, was ihm irgendein Rechner im Netzwerk schickt, lässt diesen Rechner die Selbstsicht des Schwarms umschreiben; Anfragekörper über 1 MiB werden mit `413` abgelehnt, bevor sie gelesen werden; und die Zustandsdatei wird auf den Datenträger erzwungen, bevor sie die vorherige ersetzt, sodass ein Stromausfall keinen abgeschnittenen oder leeren Zustand hinterlassen kann. *(implementiert)*
 * 📜 **Konfliktverlauf:** `GET /conflicts` listet die Konflikte, die dieser Knoten gelöst hat (Schlüssel, gewinnender Schreiber, unterlegener Schreiber und Zeit), neueste zuerst, bis zu den letzten 200 oder `?limit=N`; `/stats` hielt nur den letzten fest. Es verlangt das gemeinsame Geheimnis, wenn eines gesetzt ist, wie `/state`.
@@ -153,7 +154,7 @@ Benötigt die stabile Rust-Toolchain (Edition 2021) mit `cargo`.
 
 ## 🧪 Tests
 
-151 automatische Tests laufen mit `cargo test`. Sie brauchen weder Hardware noch etwas außerhalb dieses Rechners.
+169 automatische Tests laufen mit `cargo test`. Sie brauchen weder Hardware noch etwas außerhalb dieses Rechners.
 
 Die CI führt `HYDRA_UMC_CI=1 python tools/ci_validate.py` aus; das prüft das Manifest, die Dokumente, die acht READMEs und die Bilder.
 
@@ -216,7 +217,7 @@ cargo test   # die Lamport-Uhr, und den CRDT selbst - einschließlich
              # Konflikterkennungsverhaltens von merge_report(), und einer
              # 4-Zellen-Simulation, die Konvergenz über mehrere Runden von
              # Partitionierung und teilweiser Wiederverbindung beweist -
-             # 151 Tests insgesamt
+             # 169 Tests insgesamt
 ```
 
 Derselbe Aufruf von `reconcile()` ist außerdem über eine echte JSON/HTTP-API

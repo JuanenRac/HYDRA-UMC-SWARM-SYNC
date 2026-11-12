@@ -24,11 +24,12 @@
 // happens to carry a numerically higher raw Lamport time - generation
 // tracks real create/delete life-phase TRANSITIONS, which raw time
 // alone cannot distinguish from an unrelated later edit to something
-// else on that peer. No garbage collection of old tombstones yet
-// (they stay in `entries` forever) - real GC needs a safe "every node
-// has seen this tombstone" quorum signal this v0 doesn't have, and a
-// tombstone that vanished too early would reopen exactly the
-// resurrection bug this feature exists to close.
+// else on that peer. Tombstones stay in `entries` unless the operator
+// states a retention window (`--tombstone-retention-ms`, off by default;
+// see retention.rs): `tombstone_stamps` / `purge_tombstones` below only
+// drop what that window says is old enough, because a tombstone that
+// vanished too early would reopen exactly the resurrection bug this
+// feature exists to close.
 
 use crate::lamport::LamportTime;
 use std::collections::BTreeMap;
@@ -412,6 +413,35 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
                 self.entries.insert(key, Entry { value, stamp });
             }
         }
+    }
+
+    /// The stamp of every tombstone: key, generation, logical time and writer. What `purge_tombstones` is given back, so it can check that the
+    /// tombstone it drops is still the one that was looked at.
+    pub fn tombstone_stamps(&self) -> Vec<(K, u64, LamportTime, u64)> {
+        self.entries
+            .iter()
+            .filter(|(_, e)| e.value.is_none())
+            .map(|(k, e)| (k.clone(), e.stamp.generation, e.stamp.time, e.stamp.writer))
+            .collect()
+    }
+
+    /// Drops the tombstones named by `tombstone_stamps`, each only if the map still holds exactly that tombstone (a key that has been written
+    /// or deleted again since is left alone). Returns how many were dropped. Once a tombstone is gone, a peer that still holds an older live
+    /// copy of the key would bring it back: the caller decides when that can no longer happen (see retention.rs).
+    pub fn purge_tombstones(&mut self, expected: &[(K, u64, LamportTime, u64)]) -> usize {
+        let mut purged = 0;
+        for (key, generation, time, writer) in expected {
+            let same = matches!(
+                self.entries.get(key),
+                Some(e) if e.value.is_none()
+                    && e.stamp == Stamp { generation: *generation, time: *time, writer: *writer }
+            );
+            if same {
+                self.entries.remove(key);
+                purged += 1;
+            }
+        }
+        purged
     }
 
     /// The number of keys currently PRESENT (never counts a real
@@ -1331,5 +1361,79 @@ mod tests {
             let once = a.merge(&b);
             assert!(once.merge(&once).same_visible_state(&once));
         });
+    }
+
+    fn map_with_tombstone() -> LwwMap<String, i32> {
+        let mut m: LwwMap<String, i32> = LwwMap::new();
+        m.set("gone".to_string(), 1, LamportTime(1), 1);
+        m.remove("gone".to_string(), LamportTime(2), 1);
+        m.set("kept".to_string(), 5, LamportTime(3), 1);
+        m
+    }
+
+    #[test]
+    fn tombstone_stamps_lists_only_the_deleted_keys_and_purge_drops_them() {
+        let mut m = map_with_tombstone();
+        let stamps = m.tombstone_stamps();
+        assert_eq!(stamps, vec![("gone".to_string(), 2, LamportTime(2), 1)]);
+        assert_eq!(m.purge_tombstones(&stamps), 1);
+        assert_eq!(
+            m.entries_with_stamps().len(),
+            1,
+            "only the live key is left"
+        );
+        assert_eq!(m.get(&"kept".to_string()), Some(&5));
+        assert_eq!(m.purge_tombstones(&stamps), 0, "purging twice does nothing");
+    }
+
+    #[test]
+    fn purge_leaves_a_key_that_changed_since_it_was_looked_at() {
+        let mut m = map_with_tombstone();
+        let stamps = m.tombstone_stamps();
+        m.set("gone".to_string(), 9, LamportTime(10), 1);
+        assert_eq!(m.purge_tombstones(&stamps), 0);
+        assert_eq!(m.get(&"gone".to_string()), Some(&9));
+        m.remove("gone".to_string(), LamportTime(11), 1);
+        assert_eq!(
+            m.purge_tombstones(&stamps),
+            0,
+            "a newer delete is another tombstone"
+        );
+        assert!(m
+            .entries_with_stamps()
+            .iter()
+            .any(|(k, v, ..)| k == "gone" && v.is_none()));
+    }
+
+    #[test]
+    fn a_purged_tombstone_lets_a_stale_add_back_which_is_why_the_window_is_the_operators_to_state()
+    {
+        let mut stale: LwwMap<String, i32> = LwwMap::new();
+        stale.set("gone".to_string(), 1, LamportTime(1), 1);
+        let kept = map_with_tombstone();
+        assert_eq!(
+            kept.merge(&stale).get(&"gone".to_string()),
+            None,
+            "with the tombstone the stale add loses"
+        );
+        let mut purged = map_with_tombstone();
+        let stamps = purged.tombstone_stamps();
+        purged.purge_tombstones(&stamps);
+        assert_eq!(
+            purged.merge(&stale).get(&"gone".to_string()),
+            Some(&1),
+            "without it the key comes back"
+        );
+    }
+
+    #[test]
+    fn a_purged_tombstone_comes_back_from_a_peer_that_still_holds_it_and_the_maps_converge() {
+        let mut a = map_with_tombstone();
+        let b = map_with_tombstone();
+        let stamps = a.tombstone_stamps();
+        a.purge_tombstones(&stamps);
+        assert!(a.merge(&b).same_visible_state(&b.merge(&a)));
+        assert_eq!(a.merge(&b).get(&"gone".to_string()), None);
+        assert_eq!(a.merge(&b).tombstone_stamps().len(), 1);
     }
 }
