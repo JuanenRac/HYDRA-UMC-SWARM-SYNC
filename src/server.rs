@@ -2380,6 +2380,7 @@ mod tests {
             }),
             metrics: false,
             tombstone_retention_ms: None,
+            identity_key: None,
         }
     }
 
