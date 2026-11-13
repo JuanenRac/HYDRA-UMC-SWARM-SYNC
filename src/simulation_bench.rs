@@ -148,9 +148,9 @@ fn heal(cells: &mut [Cell]) {
     for _ in 0..CELLS {
         for from in 0..cells.len() {
             let state = cells[from].map.clone();
-            for to in 0..cells.len() {
+            for (to, cell) in cells.iter_mut().enumerate() {
                 if to != from {
-                    cells[to].receive(&state);
+                    cell.receive(&state);
                 }
             }
         }
