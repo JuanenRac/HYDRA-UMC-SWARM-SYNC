@@ -2027,6 +2027,7 @@ mod tests {
             clock: None,
             metrics: false,
             tombstone_retention_ms: None,
+            identity_key: None,
         }
     }
 
