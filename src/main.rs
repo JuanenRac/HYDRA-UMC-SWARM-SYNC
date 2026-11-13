@@ -168,6 +168,17 @@ fn run_serve(args: &[String]) -> ExitCode {
         },
         None => None,
     };
+    // Keeping a journal of the changed entries instead of writing the whole state at every merge is off unless a size is given (the journal is folded into a new snapshot past it).
+    let journal_max_bytes = match find_flag(args, "--journal-max-bytes") {
+        Some(raw) => match raw.parse::<u64>() {
+            Ok(n) if n >= 4096 => Some(n),
+            _ => {
+                eprintln!("[swarm-sync] fatal: --journal-max-bytes must be a whole number of at least 4096, got {raw:?}");
+                return ExitCode::from(2);
+            }
+        },
+        None => None,
+    };
     // The measurement of the clock of the peers (and GET /time) is off unless the configuration file turns it on.
     // The same file opens `GET /metrics` with its `metrics` section (off unless enabled).
     let mut metrics = false;
@@ -282,6 +293,7 @@ fn run_serve(args: &[String]) -> ExitCode {
                     metrics,
                     tombstone_retention_ms,
                     identity_key,
+                    journal_max_bytes,
                 },
             );
             ExitCode::SUCCESS

@@ -248,6 +248,8 @@ struct Shared {
     state: Mutex<LwwMap<String, String>>,
     evidence: Mutex<SyncEvidence>,
     state_path: Option<PathBuf>,
+    /// persist only the changed entries in a journal, folded into a new snapshot past this many bytes; None (the default): the whole state every time
+    journal_max_bytes: Option<u64>,
     shared_secret: Option<String>,
     max_time_jump: u64,
     max_generation_jump: u64,
@@ -297,6 +299,9 @@ pub struct Extra {
     /// The signing key of HYDRA-UMC-SERVER (`--identity-key-file`). With it `POST /reconcile` needs a signed token of a user who may write, and every cell must name
     /// the writer of that user (`node_writer::writer_for`). None (the default): the earlier rules, the writer is what the client says.
     pub identity_key: Option<Vec<u8>>,
+    /// Keep a journal of the changed entries next to the state file instead of writing the whole state on every merge (`--journal-max-bytes`,
+    /// off by default). The journal is folded into a new snapshot once it is longer than this many bytes.
+    pub journal_max_bytes: Option<u64>,
 }
 
 /// The clock measurements: how, and against which peers.
@@ -323,6 +328,7 @@ impl Default for Extra {
             metrics: false,
             tombstone_retention_ms: None,
             identity_key: None,
+            journal_max_bytes: None,
         }
     }
 }
@@ -383,6 +389,7 @@ pub fn run_with(
         state: Mutex::new(initial_state),
         evidence: Mutex::new(SyncEvidence::default()),
         state_path,
+        journal_max_bytes: extra.journal_max_bytes,
         shared_secret,
         max_time_jump,
         max_generation_jump: extra.max_generation_jump,
@@ -731,7 +738,7 @@ fn reconcile_request(shared: &Shared, scenario: &Scenario) -> (u16, serde_json::
             // real save failure is a real 500, not a silent "it
             // worked" that quietly didn't.
             if let Some(path) = &shared.state_path {
-                if let Err(e) = store::save(path, &merged) {
+                if let Err(e) = store::persist(path, &state, &merged, shared.journal_max_bytes) {
                     return (
                         500,
                         json!({"error": format!("merged successfully but could not persist state to {path:?}: {e}")}),
@@ -767,7 +774,7 @@ fn merge_request(shared: &Shared, entries: &[StampedEntry]) -> (u16, serde_json:
     match merge_entries(entries, state.clone()) {
         Ok((output, merged)) => {
             if let Some(path) = &shared.state_path {
-                if let Err(e) = store::save(path, &merged) {
+                if let Err(e) = store::persist(path, &state, &merged, shared.journal_max_bytes) {
                     return (
                         500,
                         json!({"error": format!("merged successfully but could not persist state to {path:?}: {e}")}),
@@ -1531,6 +1538,64 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 
+    fn start_journal_node(state_path: &std::path::Path, journal_max_bytes: u64) -> u16 {
+        let server = bind("127.0.0.1:0").unwrap();
+        let port = server.server_addr().to_ip().unwrap().port();
+        let initial = store::load(state_path).expect("the state and its journal must load");
+        let path = state_path.to_path_buf();
+        thread::spawn(move || {
+            run_with(
+                server,
+                initial,
+                Some(path),
+                None,
+                crate::reconcile::DEFAULT_MAX_TIME_JUMP,
+                Extra {
+                    journal_max_bytes: Some(journal_max_bytes),
+                    ..Extra::default()
+                },
+            )
+        });
+        port
+    }
+
+    #[test]
+    fn a_node_with_a_journal_writes_only_what_changed_and_resumes_from_it_after_a_restart() {
+        let dir = std::env::temp_dir().join(format!(
+            "swarm-sync-server-test-journal-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
+
+        let first = start_journal_node(&state_path, 1 << 20);
+        for (key, time) in [("x", 1), ("y", 2)] {
+            let body = format!(
+                r#"{{"cells": [{{"id": "cell-a", "writer": 1, "writes": [{{"key": "{key}", "value": "{time}", "time": {time}}}]}}]}}"#
+            );
+            let (status, _) = post(first, "/reconcile", &body);
+            assert_eq!(status, 200);
+        }
+        let journal = std::fs::read_to_string(store::journal_path(&state_path)).unwrap();
+        assert_eq!(
+            journal.lines().count(),
+            2,
+            "one line for each change, not the whole state again: {journal}"
+        );
+        assert!(
+            !state_path.exists(),
+            "no whole snapshot is written below the size of the journal"
+        );
+
+        let second = start_journal_node(&state_path, 1 << 20);
+        let (_, body) = get(second, "/state");
+        assert!(
+            body.contains("\"x\":\"1\"") && body.contains("\"y\":\"2\""),
+            "the restarted node must hold both entries, got: {body}"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     // Real gap this pass closes: before this, ANY caller on the network
     // could inject fabricated cell state into a node's own CRDT with no
     // way at all to tell who sent it. These lock in the opt-in behavior:
@@ -2028,6 +2093,7 @@ mod tests {
             metrics: false,
             tombstone_retention_ms: None,
             identity_key: None,
+            journal_max_bytes: None,
         }
     }
 
