@@ -33,7 +33,7 @@ $ hydra-umc-swarm-sync
 HYDRA-UMC-SWARM-SYNC v0.1.3
 CRDT swarm state reconciliation service: merges every HydraNode cell's view of swarm state into one convergent, order-independent result.
 Usage: hydra-umc-swarm-sync <scenario.json>
-       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--tombstone-retention-ms N] [--clock-sync-config FILE] [--allow-anonymous]
+       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--tombstone-retention-ms N] [--clock-sync-config FILE] [--identity-key-file FILE] [--allow-anonymous]
 See scenarios/example.json for the expected format.
 ```
 
@@ -300,3 +300,10 @@ Off unless a file given with `--clock-sync-config` (or `SWARM_SYNC_CLOCK_CONFIG`
 * Every `interval_ms` (1000 to 3600000, default 10000) the node probes each `--peer`: it notes `t0` (send), asks `GET /time` (`t1`, `t2` from the peer) and notes `t3` (receive). As NTP does, `offset = ((t1 - t0) + (t2 - t3)) / 2` is how far the clock of the peer is ahead and `rtt = (t3 - t0) - (t2 - t1)` is the time on the network. A probe whose instants cannot be right (time going backwards, the peer taking longer than the whole exchange) or whose round trip exceeds `max_rtt_ms` (1 to 60000, default 2000) is counted as rejected.
 * `GET /stats` shows `clock` (`null` while it is off): per peer `samples` in the window (`window`, 1 to 1000, default 8), `offsetUs` (the offset of the probe with the smallest round trip of the window), `rttMinUs`, `rttAvgUs`, `rttMaxUs`, `jitterUs` (the mean absolute difference between consecutive offsets), `probesAccepted`, `probesRejected`, `lastOkAgeMs` and `lastError`.
 * It is the step before PTP, not PTP: there are no hardware timestamps, so the precision is that of the network and of the scheduler of the operating system (milliseconds on a LAN). It only measures and reports: it does not change the clock of the machine or the Lamport order of the map.
+
+### The writer fixed by the token of the server (`--identity-key-file`, off by default)
+
+By default the `writer` of a cell is whatever the client puts in the scenario, so anyone who holds the shared secret can write as another node. With `--identity-key-file FILE` (or `HYDRA_UMC_SWARM_SYNC_IDENTITY_KEY_FILE`; the signing key of HYDRA-UMC-SERVER, at least 32 characters, read from a file) `POST /reconcile` needs `Authorization: Bearer <signed token of the server>` of a user who may write (`admin` or `operator`; a viewer gets `403`, a missing or forged token `401`, and the shared secret alone is no longer enough for this route), and every cell must name the writer of that user, `writer_for(username)`: the first eight bytes of SHA-256 over `hydra-umc-swarm-sync-writer-v1:` and the user name, as a number. A cell that names another writer answers `403` with the writer that was expected and nothing is written. `POST /merge` and the gossip between peers keep using the shared secret, because the entries they carry are already stamped. Without the key nothing changes.
+
+* `hydra-umc-swarm-sync writer-id USER` prints the writer number of a user, to put in the scenario of that node.
+* `hydra-umc-swarm-sync reseal --state-file F --out G --map OLD=USER [--map OLD=USER]...` migrates a state written before: it writes into `G` the state of `F` with every entry whose writer is `OLD` re-stamped with the writer of `USER`. `F` is never changed and `G` must not exist; it refuses a state it cannot read and a number mapped twice.

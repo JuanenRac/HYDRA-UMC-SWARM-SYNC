@@ -24,10 +24,16 @@ mod clocksync;
 mod crdt;
 mod entries;
 mod gossip;
+#[allow(dead_code)] // only the SHA-256 and the HMAC of the signed token are used
+mod hmac;
 mod lamport;
+mod node_writer;
 mod reconcile;
 mod retention;
 mod server;
+#[allow(dead_code)]
+// the switch and the checks of the canonical copy; this service reads the token of a request only
+mod server_identity;
 mod service_metrics;
 mod store;
 mod typed;
@@ -70,6 +76,23 @@ fn run_serve(args: &[String]) -> ExitCode {
         .filter(|s| !s.is_empty());
 
     let allow_anonymous = args.iter().any(|a| a == "--allow-anonymous");
+    // The signing key of HYDRA-UMC-SERVER, from a file: with it a /reconcile needs a signed token and writes as the writer of that user. Off unless given.
+    let identity_key = match find_flag(args, "--identity-key-file")
+        .or_else(|| env::var("HYDRA_UMC_SWARM_SYNC_IDENTITY_KEY_FILE").ok())
+        .filter(|path| !path.is_empty())
+    {
+        Some(path) => match server_identity::load_identity_key(&path) {
+            Ok(key) => {
+                eprintln!("[swarm-sync] --identity-key-file: a /reconcile needs a signed token of HYDRA-UMC-SERVER and writes as the writer of its user (print it with `writer-id USER`)");
+                Some(key)
+            }
+            Err(e) => {
+                eprintln!("[swarm-sync] fatal: --identity-key-file: {e}");
+                return ExitCode::from(2);
+            }
+        },
+        None => None,
+    };
     let max_time_jump = match find_flag(args, "--max-time-jump") {
         Some(raw) => match raw.parse::<u64>() {
             Ok(n) => n,
@@ -256,6 +279,7 @@ fn run_serve(args: &[String]) -> ExitCode {
                     clock,
                     metrics,
                     tombstone_retention_ms,
+                    identity_key,
                 },
             );
             ExitCode::SUCCESS
@@ -267,11 +291,90 @@ fn run_serve(args: &[String]) -> ExitCode {
     }
 }
 
+/// `writer-id USER`: the writer number of a user of HYDRA-UMC-SERVER (what a cell must name when that user's token is used).
+fn run_writer_id(args: &[String]) -> ExitCode {
+    match args
+        .first()
+        .filter(|name| !name.is_empty() && !name.starts_with("--"))
+    {
+        Some(name) => {
+            println!("{}", node_writer::writer_for(name));
+            ExitCode::SUCCESS
+        }
+        None => {
+            eprintln!("Usage: hydra-umc-swarm-sync writer-id USER");
+            ExitCode::from(2)
+        }
+    }
+}
+
+/// `reseal --state-file F --out G --map OLD=USER [--map OLD=USER]...`: writes into G the state of F with the writer OLD of its entries replaced by the writer of USER.
+/// F is never changed, and G must not exist.
+fn run_reseal(args: &[String]) -> ExitCode {
+    let (Some(input), Some(output)) = (find_flag(args, "--state-file"), find_flag(args, "--out"))
+    else {
+        eprintln!("Usage: hydra-umc-swarm-sync reseal --state-file F --out G --map OLD=USER [--map OLD=USER]...");
+        return ExitCode::from(2);
+    };
+    let mut map: Vec<(u64, String)> = Vec::new();
+    for (i, arg) in args.iter().enumerate() {
+        if arg != "--map" {
+            continue;
+        }
+        let Some((old, user)) = args.get(i + 1).and_then(|pair| pair.split_once('=')) else {
+            eprintln!("[swarm-sync] --map needs OLD=USER");
+            return ExitCode::from(2);
+        };
+        let Ok(old) = old.parse::<u64>() else {
+            eprintln!("[swarm-sync] --map: {old:?} is not a writer number");
+            return ExitCode::from(2);
+        };
+        map.push((old, user.to_string()));
+    }
+    if map.is_empty() {
+        eprintln!("[swarm-sync] reseal needs at least one --map OLD=USER");
+        return ExitCode::from(2);
+    }
+    if std::path::Path::new(&output).exists() {
+        eprintln!("[swarm-sync] {output} exists: reseal never overwrites a file");
+        return ExitCode::from(2);
+    }
+    let text = match fs::read_to_string(&input) {
+        Ok(text) => text,
+        Err(e) => {
+            eprintln!("[swarm-sync] could not read {input}: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match node_writer::reseal(&text, &map) {
+        Ok((resealed, changed)) => match fs::write(&output, resealed) {
+            Ok(()) => {
+                println!("{changed} entries resealed into {output}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("[swarm-sync] could not write {output}: {e}");
+                ExitCode::FAILURE
+            }
+        },
+        Err(e) => {
+            eprintln!("[swarm-sync] {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
 
     if args.get(1).map(|s| s.as_str()) == Some("serve") {
         return run_serve(&args[2..]);
+    }
+    if args.get(1).map(|s| s.as_str()) == Some("writer-id") {
+        return run_writer_id(&args[2..]);
+    }
+    if args.get(1).map(|s| s.as_str()) == Some("reseal") {
+        return run_reseal(&args[2..]);
     }
 
     println!("HYDRA-UMC-SWARM-SYNC v{VERSION}");
@@ -280,7 +383,7 @@ fn main() -> ExitCode {
     let Some(scenario_path) = args.get(1) else {
         eprintln!("Usage: hydra-umc-swarm-sync <scenario.json>");
         eprintln!(
-            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--tombstone-retention-ms N] [--clock-sync-config FILE] [--allow-anonymous]"
+            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--tombstone-retention-ms N] [--clock-sync-config FILE] [--identity-key-file FILE] [--allow-anonymous]\n       hydra-umc-swarm-sync writer-id USER\n       hydra-umc-swarm-sync reseal --state-file F --out G --map OLD=USER"
         );
         eprintln!("See scenarios/example.json for the expected format.");
         return ExitCode::SUCCESS;
