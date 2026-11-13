@@ -17,7 +17,7 @@ GPL-3.0-or-later - see LICENSE
 <p align="center">
   <img src="https://img.shields.io/badge/License-GPL%203.0--or--later-blue.svg" alt="GPL 3.0 or later">
   <img src="https://img.shields.io/badge/Protocol-CRDT%20%2F%20Lamport-orange.svg" alt="Protocol">
-  <img src="https://img.shields.io/badge/Tests-174%20passing-2ea44f.svg" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-211%20passing-2ea44f.svg" alt="Tests">
   <img src="https://img.shields.io/badge/Version-0.2.0-0f6cbd.svg" alt="Version">
   <img src="https://img.shields.io/badge/Maturity-functional-0F6CBD.svg" alt="Maturity">
 </p>
@@ -38,7 +38,7 @@ GPL-3.0-or-later - see LICENSE
 |---|---|
 | Versão | `0.2.0` |
 | Maturidade | Funcional |
-| Testes | 174 (`cargo test`) |
+| Testes | 211 (`cargo test`) |
 | Tecnologia | Rust / CRDT (LWW-Element-Map) / Lamport logical clock / JSON/HTTP |
 | Destino | O Raspberry Pi CM5 de uma célula HYDRA-UMC |
 | Em hardware real | Só simulado: testado com emuladores, dublês de teste ou simuladores; não há registo de execução em hardware real para esta versão |
@@ -54,7 +54,7 @@ Cada linha é uma parte deste repositório e a luz diz até onde chega hoje. É 
 | Área | Estado | O que significa aqui |
 |---|---|---|
 | Software | 🟡 | Funciona para o seu propósito principal; a verificação de honestidade acima lista o que ainda falta |
-| Testes | 🟢 | 174 testes automáticos, executados a cada alteração |
+| Testes | 🟢 | 211 testes automáticos, executados a cada alteração |
 | Hardware real | 🟠 | Só simulado: testado com emuladores, dublês de teste ou simuladores; não há registo de execução em hardware real para esta versão |
 | Interface e protocolos | 🟡 | As rotas ou mensagens que oferece estão documentadas e testadas com um cliente; ainda nem todos os clientes as usaram |
 | Integração | 🟠 | Funciona em conjunto com os outros serviços na bancada de testes da CM5 e as suas mensagens seguem os contratos partilhados do SDK |
@@ -160,7 +160,7 @@ Requer a cadeia de ferramentas Rust estável (edição 2021) com `cargo`.
 
 ## 🧪 Testes
 
-174 testes automáticos correm com `cargo test`. Não precisam de hardware nem de nada fora desta máquina.
+211 testes automáticos correm com `cargo test`. Não precisam de hardware nem de nada fora desta máquina.
 
 A CI executa `HYDRA_UMC_CI=1 python tools/ci_validate.py`, que verifica o manifesto, os documentos, os oito README e as imagens.
 
@@ -210,7 +210,7 @@ cargo test   # o relógio de Lamport e o próprio CRDT - incluindo
              # concorrentes, o comportamento de deteção de conflitos do
              # próprio merge_report() e uma simulação de 4 células que prova
              # a convergência ao longo de várias rondas de partição e
-             # reconexão parcial - 174 testes no total
+             # reconexão parcial - 211 testes no total
 ```
 
 A mesma chamada `reconcile()` também é acessível através de uma API JSON/HTTP real (`src/server.rs`, `tiny_http`, bloqueante, sem runtime assíncrono) em vez de um ficheiro de cenário local - o `run.sh serve [--addr ADDR] [--port PORT]` arranca-a (por defeito `127.0.0.1:8112`), expondo `POST /reconcile` (cenário no corpo do pedido, com a mesma forma JSON) e `GET /stats`. É isto que o `systemd/hydra-umc-swarm-sync.service` executa sem supervisão na CM5. A utilização completa, os códigos de saída e a referência completa das rotas estão em [`docs/CLI_REFERENCE.md`](docs/CLI_REFERENCE.md).
