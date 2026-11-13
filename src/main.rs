@@ -35,6 +35,8 @@ mod server;
 // the switch and the checks of the canonical copy; this service reads the token of a request only
 mod server_identity;
 mod service_metrics;
+#[cfg(test)]
+mod simulation_bench;
 mod store;
 mod typed;
 
