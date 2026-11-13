@@ -260,6 +260,8 @@ struct Shared {
     retention_ms: Option<u64>,
     /// when each tombstone was deleted (only filled with a window on; see retention.rs)
     deleted_at: Mutex<DeletedAt>,
+    /// the signing key of HYDRA-UMC-SERVER: the writer of a `/reconcile` is then fixed by the token (see node_writer.rs)
+    identity_key: Option<Vec<u8>>,
 }
 
 /// What this node knows of its exchange with one peer.
@@ -292,6 +294,9 @@ pub struct Extra {
     pub metrics: bool,
     /// Drop a tombstone once it was deleted more than this many milliseconds ago (off by default; see retention.rs for the risk)
     pub tombstone_retention_ms: Option<u64>,
+    /// The signing key of HYDRA-UMC-SERVER (`--identity-key-file`). With it `POST /reconcile` needs a signed token of a user who may write, and every cell must name
+    /// the writer of that user (`node_writer::writer_for`). None (the default): the earlier rules, the writer is what the client says.
+    pub identity_key: Option<Vec<u8>>,
 }
 
 /// The clock measurements: how, and against which peers.
@@ -317,6 +322,7 @@ impl Default for Extra {
             clock: None,
             metrics: false,
             tombstone_retention_ms: None,
+            identity_key: None,
         }
     }
 }
@@ -384,6 +390,7 @@ pub fn run_with(
         metrics: extra.metrics,
         retention_ms: extra.tombstone_retention_ms,
         deleted_at: Mutex::new(DeletedAt::default()),
+        identity_key: extra.identity_key.clone(),
         clock: extra.clock.as_ref().map(|c| {
             Mutex::new(
                 c.peers
@@ -542,7 +549,22 @@ fn serve(server: &Server, shared: &Shared) {
             write_json(request, 404, &json!({"error": "not found"}));
             continue;
         }
-        if !is_authorized(&request, &shared.shared_secret) {
+        // With the key of the SERVER a /reconcile is the write of one identified node: its token, not the shared secret, says who it is (a /merge is
+        // the exchange between peers and keeps the shared secret).
+        let mut writer_identity: Option<crate::server_identity::Identity> = None;
+        if let (Some(key), "/reconcile") = (&shared.identity_key, path.as_str()) {
+            match bearer_identity(&request, key) {
+                Ok(identity) if identity.can_write() => writer_identity = Some(identity),
+                Ok(_) => {
+                    write_json(request, 403, &json!({"error": "a viewer may not write"}));
+                    continue;
+                }
+                Err(reason) => {
+                    write_json(request, 401, &json!({"error": reason}));
+                    continue;
+                }
+            }
+        } else if !is_authorized(&request, &shared.shared_secret) {
             write_json(
                 request,
                 401,
@@ -614,8 +636,51 @@ fn serve(server: &Server, shared: &Shared) {
             }
         };
 
+        if let Some(identity) = &writer_identity {
+            let expected = crate::node_writer::writer_for(&identity.username);
+            if let Some(cell) = scenario.cells.iter().find(|c| c.writer != expected) {
+                write_json(
+                    request,
+                    403,
+                    &json!({
+                        "error": format!(
+                            "the cell {:?} names the writer {} but the token of {:?} is the writer {expected}",
+                            cell.id, cell.writer, identity.username
+                        ),
+                        "writer": expected,
+                    }),
+                );
+                continue;
+            }
+        }
+
         let (status, body) = reconcile_request(shared, &scenario);
         write_json(request, status, &body);
+    }
+}
+
+/// The identity in the signed token of HYDRA-UMC-SERVER that the request carries as its bearer, or why there is none.
+fn bearer_identity(
+    request: &tiny_http::Request,
+    key: &[u8],
+) -> Result<crate::server_identity::Identity, &'static str> {
+    let presented = request
+        .headers()
+        .iter()
+        .find(|h| {
+            h.field
+                .as_str()
+                .as_str()
+                .eq_ignore_ascii_case("Authorization")
+        })
+        .map(|h| h.value.as_str());
+    match presented.and_then(|v| v.strip_prefix("Bearer ")) {
+        Some(token) => crate::server_identity::verify_token(
+            token.trim(),
+            key,
+            crate::server_identity::now_seconds(),
+        ),
+        None => Err("a signed token of HYDRA-UMC-SERVER is required"),
     }
 }
 
@@ -1686,6 +1751,124 @@ mod tests {
         assert_eq!(post(port, "/reconcile", scenario).0, 200);
         assert!(file.is_file());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- the writer fixed by the token of the server ----
+
+    /// A token of HYDRA-UMC-SERVER signed with `key`, valid for ten minutes, for `username` with `role`.
+    fn server_token(key: &[u8], username: &str, role: &str) -> String {
+        fn b64(data: &[u8]) -> String {
+            const TABLE: &[u8; 64] =
+                b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+            let mut out = String::new();
+            for chunk in data.chunks(3) {
+                let n = chunk
+                    .iter()
+                    .enumerate()
+                    .fold(0u32, |acc, (i, b)| acc | (u32::from(*b) << (16 - 8 * i)));
+                for i in 0..=chunk.len() {
+                    out.push(TABLE[((n >> (18 - 6 * i)) & 63) as usize] as char);
+                }
+            }
+            out
+        }
+        let head = b64(br#"{"alg":"HS256","typ":"JWT"}"#);
+        let exp = crate::server_identity::now_seconds() as u64 + 600;
+        let body =
+            b64(format!(r#"{{"username":"{username}","role":"{role}","exp":{exp}}}"#).as_bytes());
+        let mac = crate::hmac::hmac_sha256(key, format!("{head}.{body}").as_bytes());
+        format!("{head}.{body}.{}", b64(&mac))
+    }
+
+    const IDENTITY_KEY: &[u8] = b"0123456789abcdef0123456789abcdef";
+
+    fn node_with_identity() -> u16 {
+        start_node(
+            Some("peer-secret-0123456789".to_string()),
+            Extra {
+                identity_key: Some(IDENTITY_KEY.to_vec()),
+                ..Extra::default()
+            },
+        )
+    }
+
+    fn scenario_for(writer: u64) -> String {
+        format!(
+            r#"{{"cells": [{{"id": "cell-a", "writer": {writer}, "writes": [{{"key": "x", "value": "1", "time": 1}}]}}]}}"#
+        )
+    }
+
+    #[test]
+    fn with_the_key_of_the_server_a_reconcile_writes_as_the_writer_of_its_token() {
+        let port = node_with_identity();
+        let writer = crate::node_writer::writer_for("node-a");
+        let token = server_token(IDENTITY_KEY, "node-a", "operator");
+        let (status, body) =
+            post_with_auth(port, "/reconcile", &scenario_for(writer), Some(&token));
+        assert_eq!(status, 200, "{body}");
+    }
+
+    #[test]
+    fn a_cell_that_names_another_writer_is_refused_and_nothing_is_written() {
+        let port = node_with_identity();
+        let token = server_token(IDENTITY_KEY, "node-a", "operator");
+        let other = crate::node_writer::writer_for("node-b");
+        let (status, body) = post_with_auth(port, "/reconcile", &scenario_for(other), Some(&token));
+        assert_eq!(status, 403, "{body}");
+        assert!(
+            body.contains(&crate::node_writer::writer_for("node-a").to_string()),
+            "{body}"
+        );
+        let (_, state) = get_with_auth(port, "/state", Some("peer-secret-0123456789"));
+        assert!(!state.contains("\"x\""), "{state}");
+    }
+
+    #[test]
+    fn without_a_valid_token_or_as_a_viewer_a_reconcile_is_refused() {
+        let port = node_with_identity();
+        let writer = crate::node_writer::writer_for("node-a");
+        // the shared secret of the peers is not an identity for a write
+        assert_eq!(
+            post_with_auth(
+                port,
+                "/reconcile",
+                &scenario_for(writer),
+                Some("peer-secret-0123456789")
+            )
+            .0,
+            401
+        );
+        assert_eq!(post(port, "/reconcile", &scenario_for(writer)).0, 401);
+        let forged = server_token(b"another-key-another-key-another-key", "node-a", "operator");
+        assert_eq!(
+            post_with_auth(port, "/reconcile", &scenario_for(writer), Some(&forged)).0,
+            401
+        );
+        let viewer = server_token(IDENTITY_KEY, "node-a", "viewer");
+        assert_eq!(
+            post_with_auth(port, "/reconcile", &scenario_for(writer), Some(&viewer)).0,
+            403
+        );
+    }
+
+    #[test]
+    fn the_exchange_between_peers_keeps_the_shared_secret() {
+        let port = node_with_identity();
+        let body = serde_json::json!({"entries": [{"key": "k", "value": "v", "time": 1, "writer": 9, "generation": 1}]}).to_string();
+        assert_eq!(
+            post_with_auth(port, "/merge", &body, Some("peer-secret-0123456789")).0,
+            200
+        );
+        assert_eq!(
+            post_with_auth(port, "/merge", &body, Some("wrong-secret-0123456789")).0,
+            401
+        );
+    }
+
+    #[test]
+    fn without_the_key_the_writer_is_whatever_the_client_says_as_before() {
+        let port = start_node(None, Extra::default());
+        assert_eq!(post(port, "/reconcile", &scenario_for(77)).0, 200);
     }
 
     // ---- the exchange of full entries and the gossip client ----
