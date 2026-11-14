@@ -665,6 +665,32 @@ mod in_place_tests {
     }
 
     #[test]
+    fn a_late_entry_that_is_overwritten_takes_the_copying_path_and_reports_the_changed_key() {
+        // the entry at the end of the clock range is replaced by a newer generation with a small time, so the merged map has room for the next time
+        let mut late = LwwMap::new();
+        late.restore_entry(
+            "z".to_string(),
+            Some("late".to_string()),
+            LamportTime(u64::MAX - 1),
+            1,
+            1,
+        );
+        late.restore_entry(
+            "y".to_string(),
+            Some("kept".to_string()),
+            LamportTime(2),
+            1,
+            1,
+        );
+        let request = vec![entry("z", None, 5, 2, 2)];
+        let (copied_output, copied) = merge_entries(&request, late.clone()).unwrap();
+        let (output, changed) = merge_entries_in_place(&request, &mut late).unwrap();
+        assert_eq!(state(&late), state(&copied));
+        assert_eq!(output.next_local_time, copied_output.next_local_time);
+        assert_eq!(changed, vec!["z".to_string()]);
+    }
+
+    #[test]
     fn seeded_random_requests_agree_with_the_copying_merge() {
         let mut seed: u64 = 0xfeed_beef;
         let mut next = move |bound: u64| {
