@@ -137,6 +137,10 @@ impl<V> Entry<V> {
     }
 }
 
+/// The entries a map held under some keys, taken by `LwwMap::save_keys` so that `LwwMap::restore_keys` can put them back.
+#[derive(Debug, Clone)]
+pub struct SavedKeys<K, V>(Vec<(K, Option<Entry<V>>)>);
+
 /// A CRDT map from `K` to `V`, synchronized via last-writer-wins per key.
 #[derive(Debug, Clone)]
 pub struct LwwMap<K, V> {
@@ -385,6 +389,41 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
                 )
             })
             .collect()
+    }
+
+    /// The entry under `key` as `entries_with_stamps` reports it (value, time, writer, generation), or `None` when the map has never held the key.
+    pub fn stamped_entry(&self, key: &K) -> Option<(Option<V>, LamportTime, u64, u64)> {
+        self.entries.get(key).map(|e| {
+            (
+                e.value.clone(),
+                e.stamp.time,
+                e.stamp.writer,
+                e.stamp.generation,
+            )
+        })
+    }
+
+    /// The entries held under `keys` (a key the map never held is remembered as absent). The work is proportional to `keys`, not to the map.
+    pub fn save_keys(&self, keys: &[K]) -> SavedKeys<K, V> {
+        SavedKeys(
+            keys.iter()
+                .map(|k| (k.clone(), self.entries.get(k).cloned()))
+                .collect(),
+        )
+    }
+
+    /// Puts back what `save_keys` took: the undo of a merge in place whose result could not be written down.
+    pub fn restore_keys(&mut self, saved: SavedKeys<K, V>) {
+        for (key, entry) in saved.0 {
+            match entry {
+                Some(entry) => {
+                    self.entries.insert(key, entry);
+                }
+                None => {
+                    self.entries.remove(&key);
+                }
+            }
+        }
     }
 
     /// restores one entry EXACTLY as `entries_with_stamps` reported
@@ -1493,6 +1532,29 @@ mod in_place_tests {
         assert_eq!(state(&in_place), state(&reported));
         assert_eq!(conflicts, report_conflicts);
         assert_eq!(changed, vec!["w".to_string(), "y".to_string()]);
+    }
+
+    #[test]
+    fn the_keys_of_a_merge_in_place_can_be_put_back() {
+        let mut map: LwwMap<String, String> = LwwMap::new();
+        map.set("a".into(), "1".into(), LamportTime(1), 1);
+        map.remove("b".into(), LamportTime(2), 1);
+        let before = map.entries_with_stamps();
+        let keys = vec!["a".to_string(), "b".to_string(), "new".to_string()];
+        let saved = map.save_keys(&keys);
+        let mut other: LwwMap<String, String> = LwwMap::new();
+        other.set("a".into(), "2".into(), LamportTime(9), 2);
+        other.set("b".into(), "3".into(), LamportTime(9), 2);
+        other.set("new".into(), "4".into(), LamportTime(9), 2);
+        let (_, changed) = map.merge_report_in_place(&other).unwrap();
+        assert_eq!(changed.len(), 3);
+        assert_eq!(
+            map.stamped_entry(&"new".to_string()).unwrap().0.as_deref(),
+            Some("4")
+        );
+        map.restore_keys(saved);
+        assert_eq!(map.entries_with_stamps(), before);
+        assert!(map.stamped_entry(&"new".to_string()).is_none());
     }
 
     #[test]

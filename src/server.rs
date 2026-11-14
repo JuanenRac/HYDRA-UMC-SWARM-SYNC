@@ -31,7 +31,7 @@ use tiny_http::{Header, Method, Response, Server};
 
 use crate::crdt::{LwwMap, MergeConflict};
 use crate::entries::{
-    check_entries, merge_entries, state_entries, MergeRequest, StampedEntry,
+    check_entries, merge_entries_in_place, state_entries, MergeRequest, StampedEntry,
     DEFAULT_MAX_GENERATION_JUMP,
 };
 use crate::gossip::{self, Peer};
@@ -771,17 +771,22 @@ fn merge_request(shared: &Shared, entries: &[StampedEntry]) -> (u16, serde_json:
     ) {
         return error_response(&e);
     }
-    match merge_entries(entries, state.clone()) {
-        Ok((output, merged)) => {
+    // only the keys of the request can change: their entries are kept so that a state that cannot be written down is put back as it was
+    let request_keys: Vec<String> = entries.iter().map(|e| e.key.clone()).collect();
+    let saved = state.save_keys(&request_keys);
+    match merge_entries_in_place(entries, &mut state) {
+        Ok((output, changed)) => {
             if let Some(path) = &shared.state_path {
-                if let Err(e) = store::persist(path, &state, &merged, shared.journal_max_bytes) {
+                if let Err(e) =
+                    store::persist_changed(path, &state, &changed, shared.journal_max_bytes)
+                {
+                    state.restore_keys(saved);
                     return (
                         500,
                         json!({"error": format!("merged successfully but could not persist state to {path:?}: {e}")}),
                     );
                 }
             }
-            *state = merged;
             note_deletions(shared, &state, entries);
             drop(state);
             let mut evidence = shared.evidence.lock().unwrap();
@@ -2016,6 +2021,60 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&state).unwrap(),
             json!({})
         );
+    }
+
+    #[test]
+    fn a_merge_of_one_key_writes_one_line_of_the_journal_and_a_failed_write_puts_the_state_back() {
+        let dir = std::env::temp_dir().join(format!(
+            "swarm-sync-server-test-merge-journal-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
+        let port = start_journal_node(&state_path, 1 << 20);
+        let many: Vec<String> = (1..=50)
+            .map(|i| {
+                format!(r#"{{"key":"k{i}","value":"v","time":{i},"writer":2,"generation":1}}"#)
+            })
+            .collect();
+        let body = format!(r#"{{"entries":[{}]}}"#, many.join(","));
+        assert_eq!(post(port, "/merge", &body).0, 200);
+        let one = r#"{"entries":[{"key":"k1","value":"new","time":60,"writer":2,"generation":1}]}"#;
+        assert_eq!(post(port, "/merge", one).0, 200);
+        let journal = std::fs::read_to_string(store::journal_path(&state_path)).unwrap();
+        assert_eq!(
+            journal.lines().count(),
+            51,
+            "50 lines for the first request and one line for the key that changed"
+        );
+        // the same entry again changes nothing and writes nothing
+        assert_eq!(post(port, "/merge", one).0, 200);
+        let again = std::fs::read_to_string(store::journal_path(&state_path)).unwrap();
+        assert_eq!(again.lines().count(), 51);
+        std::fs::remove_dir_all(&dir).ok();
+
+        // a state file that cannot be replaced (a directory sits where it goes): the merge is a 500 and the state is as it was
+        let dir = std::env::temp_dir().join(format!(
+            "swarm-sync-server-test-merge-undo-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let state_path = dir.join("state.json");
+        let port = start_test_server_with_state(Some(state_path.clone()));
+        let first = r#"{"entries":[{"key":"a","value":"1","time":1,"writer":2,"generation":1}]}"#;
+        assert_eq!(post(port, "/merge", first).0, 200);
+        std::fs::remove_file(&state_path).unwrap();
+        std::fs::create_dir_all(state_path.join("blocker")).unwrap();
+        let next = r#"{"entries":[{"key":"a","value":"2","time":9,"writer":2,"generation":1},{"key":"b","value":"3","time":9,"writer":2,"generation":1}]}"#;
+        let (status, body) = post(port, "/merge", next);
+        assert_eq!(status, 500, "{body}");
+        let (_, state) = get(port, "/state");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&state).unwrap(),
+            json!({"a": "1"}),
+            "a state that could not be written down is not kept"
+        );
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
