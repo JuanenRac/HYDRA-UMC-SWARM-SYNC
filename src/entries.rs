@@ -212,6 +212,12 @@ fn next_local_time(map: &LwwMap<String, String>) -> Result<LamportTime, Reconcil
     clock.tick().map_err(|_| ReconcileError::ClockOverflow)
 }
 
+/// What `merge_entries_in_place` gives back: the output of the merge and the keys whose entry changed.
+pub type InPlaceOutcome = Result<(MergeOutput, Vec<String>), ReconcileError>;
+
+/// The value and the stamp (time, writer, generation) of one entry.
+type EntryState = (Option<String>, u64, u64, u64);
+
 /// `merge_entries` applied to `prior` itself, for the server: no copy of the state is made, and the keys that changed come back with the output
 /// so that only those are written down. All or nothing: a refused request (a collision, a clock that would overflow) leaves `prior` as it was.
 ///
@@ -220,7 +226,7 @@ fn next_local_time(map: &LwwMap<String, String>) -> Result<LamportTime, Reconcil
 pub fn merge_entries_in_place(
     entries: &[StampedEntry],
     prior: &mut LwwMap<String, String>,
-) -> Result<(MergeOutput, Vec<String>), ReconcileError> {
+) -> InPlaceOutcome {
     let near_the_end = |time: u64| time >= u64::MAX - 1;
     if prior.max_time().is_some_and(|t| near_the_end(t.0))
         || entries.iter().any(|e| near_the_end(e.time))
@@ -248,7 +254,7 @@ pub fn merge_entries_in_place(
 
 /// The keys whose entry (value or stamp) differs between `before` and `after`.
 fn changed_keys(before: &LwwMap<String, String>, after: &LwwMap<String, String>) -> Vec<String> {
-    let known: BTreeMap<String, (Option<String>, u64, u64, u64)> = before
+    let known: BTreeMap<String, EntryState> = before
         .entries_with_stamps()
         .into_iter()
         .map(|(key, value, time, writer, generation)| (key, (value, time.0, writer, generation)))
@@ -613,7 +619,9 @@ mod in_place_tests {
         m
     }
 
-    fn state(m: &LwwMap<String, String>) -> Vec<(String, Option<String>, u64, u64, u64)> {
+    type Row = (String, Option<String>, u64, u64, u64);
+
+    fn state(m: &LwwMap<String, String>) -> Vec<Row> {
         m.entries_with_stamps()
             .into_iter()
             .map(|(k, v, t, w, g)| (k, v, t.0, w, g))

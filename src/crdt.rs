@@ -157,6 +157,9 @@ impl<K, V> Default for LwwMap<K, V> {
 type MergeReportResult<K, V> =
     Result<(LwwMap<K, V>, Vec<MergeConflict<K, V>>), IdentityCollision<K, V>>;
 
+/// `merge_report_in_place`'s return type: the conflicts resolved and the keys whose entry changed, or the collision it refused.
+type InPlaceMergeResult<K, V> = Result<(Vec<MergeConflict<K, V>>, Vec<K>), IdentityCollision<K, V>>;
+
 impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
     pub fn new() -> Self {
         Self::default()
@@ -548,10 +551,7 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
     ///
     /// All or nothing: the collision check (an identical stamp claiming two different values) runs over all of `other` BEFORE the first
     /// change, so a refusal leaves this map as it was.
-    pub fn merge_report_in_place(
-        &mut self,
-        other: &Self,
-    ) -> Result<(Vec<MergeConflict<K, V>>, Vec<K>), IdentityCollision<K, V>> {
+    pub fn merge_report_in_place(&mut self, other: &Self) -> InPlaceMergeResult<K, V> {
         for (key, other_entry) in other.entries.iter() {
             if let Some(existing) = self.entries.get(key) {
                 if existing.stamp == other_entry.stamp && existing.value != other_entry.value {
@@ -1474,7 +1474,9 @@ mod in_place_tests {
         m
     }
 
-    fn state(m: &LwwMap<String, String>) -> Vec<(String, Option<String>, u64, u64, u64)> {
+    type Row = (String, Option<String>, u64, u64, u64);
+
+    fn state(m: &LwwMap<String, String>) -> Vec<Row> {
         m.entries_with_stamps()
             .into_iter()
             .map(|(k, v, t, w, g)| (k, v, t.0, w, g))
