@@ -145,12 +145,8 @@ pub fn check_entries(
     Ok(())
 }
 
-/// Merges the entries into `prior` with the exact stamps they carry. The same entry twice is idempotent; two different values under one
-/// stamp are the impossible collision the merge refuses.
-pub fn merge_entries(
-    entries: &[StampedEntry],
-    prior: LwwMap<String, String>,
-) -> Result<(MergeOutput, LwwMap<String, String>), ReconcileError> {
+/// The entries of a request as a map with the exact stamps they carry.
+fn remote_map(entries: &[StampedEntry]) -> Result<LwwMap<String, String>, ReconcileError> {
     let mut remote: LwwMap<String, String> = LwwMap::new();
     // two entries of the request for the same key are two claims about it: the stamp decides, and an identical stamp with another value is a collision
     let mut seen: BTreeMap<&str, &StampedEntry> = BTreeMap::new();
@@ -180,16 +176,20 @@ pub fn merge_entries(
             entry.generation,
         );
     }
+    Ok(remote)
+}
+
+/// Merges the entries into `prior` with the exact stamps they carry. The same entry twice is idempotent; two different values under one
+/// stamp are the impossible collision the merge refuses.
+pub fn merge_entries(
+    entries: &[StampedEntry],
+    prior: LwwMap<String, String>,
+) -> Result<(MergeOutput, LwwMap<String, String>), ReconcileError> {
+    let remote = remote_map(entries)?;
     let (merged, conflicts) = prior
         .merge_report(&remote)
         .map_err(ReconcileError::ImpossibleConflict)?;
-    let mut clock = LamportClock::new();
-    if let Some(latest) = merged.max_time() {
-        clock
-            .observe(latest)
-            .map_err(|_| ReconcileError::ClockOverflow)?;
-    }
-    let next = clock.tick().map_err(|_| ReconcileError::ClockOverflow)?;
+    let next = next_local_time(&merged)?;
     Ok((
         MergeOutput {
             entries_received: entries.len(),
@@ -199,6 +199,68 @@ pub fn merge_entries(
         },
         merged,
     ))
+}
+
+/// The time this node stamps its next write with: one past the latest time in `map`, as the clock observes it.
+fn next_local_time(map: &LwwMap<String, String>) -> Result<LamportTime, ReconcileError> {
+    let mut clock = LamportClock::new();
+    if let Some(latest) = map.max_time() {
+        clock
+            .observe(latest)
+            .map_err(|_| ReconcileError::ClockOverflow)?;
+    }
+    clock.tick().map_err(|_| ReconcileError::ClockOverflow)
+}
+
+/// `merge_entries` applied to `prior` itself, for the server: no copy of the state is made, and the keys that changed come back with the output
+/// so that only those are written down. All or nothing: a refused request (a collision, a clock that would overflow) leaves `prior` as it was.
+///
+/// A clock at the very end of its range (a time within two of `u64::MAX`) is rare enough to take the copying path, which decides the overflow on
+/// the merged map exactly as before.
+pub fn merge_entries_in_place(
+    entries: &[StampedEntry],
+    prior: &mut LwwMap<String, String>,
+) -> Result<(MergeOutput, Vec<String>), ReconcileError> {
+    let near_the_end = |time: u64| time >= u64::MAX - 1;
+    if prior.max_time().is_some_and(|t| near_the_end(t.0))
+        || entries.iter().any(|e| near_the_end(e.time))
+    {
+        let (output, merged) = merge_entries(entries, prior.clone())?;
+        let changed = changed_keys(prior, &merged);
+        *prior = merged;
+        return Ok((output, changed));
+    }
+    let remote = remote_map(entries)?;
+    let (conflicts, changed) = prior
+        .merge_report_in_place(&remote)
+        .map_err(ReconcileError::ImpossibleConflict)?;
+    let next = next_local_time(prior)?;
+    Ok((
+        MergeOutput {
+            entries_received: entries.len(),
+            conflicts_resolved: conflicts.len(),
+            conflicts,
+            next_local_time: next.0,
+        },
+        changed,
+    ))
+}
+
+/// The keys whose entry (value or stamp) differs between `before` and `after`.
+fn changed_keys(before: &LwwMap<String, String>, after: &LwwMap<String, String>) -> Vec<String> {
+    let known: BTreeMap<String, (Option<String>, u64, u64, u64)> = before
+        .entries_with_stamps()
+        .into_iter()
+        .map(|(key, value, time, writer, generation)| (key, (value, time.0, writer, generation)))
+        .collect();
+    after
+        .entries_with_stamps()
+        .into_iter()
+        .filter(|(key, value, time, writer, generation)| {
+            known.get(key) != Some(&(value.clone(), time.0, *writer, *generation))
+        })
+        .map(|(key, ..)| key)
+        .collect()
 }
 
 #[cfg(test)]
@@ -508,5 +570,132 @@ mod tests {
         let (_, a) = merge_entries(std::slice::from_ref(&old), LwwMap::new()).unwrap();
         let (_, b) = merge_entries(&[with], LwwMap::new()).unwrap();
         assert_eq!(state_entries(&a), state_entries(&b));
+    }
+}
+
+#[cfg(test)]
+mod in_place_tests {
+    use super::*;
+
+    fn entry(
+        key: &str,
+        value: Option<&str>,
+        time: u64,
+        writer: u64,
+        generation: u64,
+    ) -> StampedEntry {
+        StampedEntry {
+            key: key.to_string(),
+            value: value.map(str::to_string),
+            time,
+            writer,
+            generation,
+            deleted_at_ms: None,
+        }
+    }
+
+    fn prior() -> LwwMap<String, String> {
+        let mut m = LwwMap::new();
+        m.restore_entry(
+            "a".to_string(),
+            Some("one".to_string()),
+            LamportTime(3),
+            1,
+            1,
+        );
+        m.restore_entry(
+            "b".to_string(),
+            Some("two".to_string()),
+            LamportTime(4),
+            1,
+            1,
+        );
+        m
+    }
+
+    fn state(m: &LwwMap<String, String>) -> Vec<(String, Option<String>, u64, u64, u64)> {
+        m.entries_with_stamps()
+            .into_iter()
+            .map(|(k, v, t, w, g)| (k, v, t.0, w, g))
+            .collect()
+    }
+
+    #[test]
+    fn in_place_gives_the_same_state_output_and_the_changed_keys() {
+        let request = vec![
+            entry("a", Some("newer"), 9, 2, 1),
+            entry("b", Some("older"), 1, 2, 1),
+            entry("c", Some("fresh"), 2, 2, 1),
+        ];
+        let (copied_output, copied) = merge_entries(&request, prior()).unwrap();
+        let mut in_place = prior();
+        let (output, changed) = merge_entries_in_place(&request, &mut in_place).unwrap();
+        assert_eq!(state(&in_place), state(&copied));
+        assert_eq!(output.next_local_time, copied_output.next_local_time);
+        assert_eq!(output.conflicts_resolved, copied_output.conflicts_resolved);
+        assert_eq!(changed, vec!["a".to_string(), "c".to_string()]);
+    }
+
+    #[test]
+    fn a_collision_leaves_the_state_as_it_was() {
+        let request = vec![
+            entry("a", Some("newer"), 9, 2, 1),
+            entry("b", Some("different"), 4, 1, 1),
+        ];
+        let mut state_before = prior();
+        let before = state(&state_before);
+        assert!(merge_entries_in_place(&request, &mut state_before).is_err());
+        assert_eq!(state(&state_before), before);
+    }
+
+    #[test]
+    fn a_clock_near_the_end_of_its_range_gets_the_same_answer_as_the_copying_merge() {
+        let request = vec![entry("z", Some("late"), u64::MAX - 1, 2, 1)];
+        let copied = merge_entries(&request, prior());
+        let mut in_place = prior();
+        let before = state(&in_place);
+        let outcome = merge_entries_in_place(&request, &mut in_place);
+        assert!(copied.is_err());
+        assert!(outcome.is_err());
+        assert_eq!(
+            state(&in_place),
+            before,
+            "an overflow leaves the state as it was"
+        );
+    }
+
+    #[test]
+    fn seeded_random_requests_agree_with_the_copying_merge() {
+        let mut seed: u64 = 0xfeed_beef;
+        let mut next = move |bound: u64| {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (seed >> 33) % bound
+        };
+        for _ in 0..200 {
+            let request: Vec<StampedEntry> = (0..next(6))
+                .map(|i| {
+                    entry(
+                        &format!("k{}", next(5)),
+                        Some(&format!("v{i}-{}", next(50))),
+                        1 + next(12),
+                        2 + next(2),
+                        1,
+                    )
+                })
+                .collect();
+            let copied = merge_entries(&request, prior());
+            let mut in_place = prior();
+            let outcome = merge_entries_in_place(&request, &mut in_place);
+            match (copied, outcome) {
+                (Ok((copied_output, copied_map)), Ok((output, _changed))) => {
+                    assert_eq!(state(&in_place), state(&copied_map));
+                    assert_eq!(output.next_local_time, copied_output.next_local_time);
+                }
+                (Err(_), Err(_)) => assert_eq!(state(&in_place), state(&prior())),
+                _ => panic!("the two merges disagree about whether the request is refused"),
+            }
+        }
     }
 }
