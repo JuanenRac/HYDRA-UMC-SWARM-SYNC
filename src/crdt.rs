@@ -157,6 +157,9 @@ impl<K, V> Default for LwwMap<K, V> {
 type MergeReportResult<K, V> =
     Result<(LwwMap<K, V>, Vec<MergeConflict<K, V>>), IdentityCollision<K, V>>;
 
+/// `merge_report_in_place`'s return type: the conflicts resolved and the keys whose entry changed, or the collision it refused.
+type InPlaceMergeResult<K, V> = Result<(Vec<MergeConflict<K, V>>, Vec<K>), IdentityCollision<K, V>>;
+
 impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
     pub fn new() -> Self {
         Self::default()
@@ -539,32 +542,46 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
     /// (`reconcile_with_prior`) always uses this, never plain `merge()`.
     pub fn merge_report(&self, other: &Self) -> MergeReportResult<K, V> {
         let mut result = self.clone();
-        let mut conflicts = Vec::new();
+        let (conflicts, _changed) = result.merge_report_in_place(other)?;
+        Ok((result, conflicts))
+    }
+
+    /// `merge_report` applied to this map itself: no copy of the map is made, the work is proportional to `other` and not to `self`, and the
+    /// keys whose entry changed are returned next to the conflicts (a caller that persists only what changed needs exactly those).
+    ///
+    /// All or nothing: the collision check (an identical stamp claiming two different values) runs over all of `other` BEFORE the first
+    /// change, so a refusal leaves this map as it was.
+    pub fn merge_report_in_place(&mut self, other: &Self) -> InPlaceMergeResult<K, V> {
         for (key, other_entry) in other.entries.iter() {
-            match result.entries.get(key) {
-                Some(existing) if existing.stamp == other_entry.stamp => {
-                    if existing.value != other_entry.value {
-                        // same (generation, time, writer) stamp,
-                        // but two DIFFERENT values (a real value vs a
-                        // real value, or - - a real value vs a
-                        // tombstone) - the "impossible" case this map's
-                        // own single-writer invariant should have
-                        // prevented. Refuse the whole reconciliation
-                        // rather than silently keeping either side (both
-                        // are equally, arbitrarily "right" by stamp
-                        // order - there is no principled winner).
-                        return Err(IdentityCollision {
-                            key: key.clone(),
-                            time: existing.stamp.time,
-                            writer: existing.stamp.writer,
-                            local_value: existing.value.clone(),
-                            remote_value: other_entry.value.clone(),
-                        });
-                    }
-                    // Identical stamp AND identical value - a true
-                    // idempotent duplicate (e.g. a retried gossip round
-                    // delivering the same update twice). Not a conflict.
+            if let Some(existing) = self.entries.get(key) {
+                if existing.stamp == other_entry.stamp && existing.value != other_entry.value {
+                    // same (generation, time, writer) stamp, but two
+                    // DIFFERENT values (a real value vs a real value, or
+                    // a real value vs a tombstone) - the "impossible"
+                    // case this map's own single-writer invariant should
+                    // have prevented. Refuse the whole reconciliation
+                    // rather than silently keeping either side (both are
+                    // equally, arbitrarily "right" by stamp order - there
+                    // is no principled winner).
+                    return Err(IdentityCollision {
+                        key: key.clone(),
+                        time: existing.stamp.time,
+                        writer: existing.stamp.writer,
+                        local_value: existing.value.clone(),
+                        remote_value: other_entry.value.clone(),
+                    });
                 }
+            }
+        }
+        let mut conflicts = Vec::new();
+        let mut changed = Vec::new();
+        for (key, other_entry) in other.entries.iter() {
+            match self.entries.get(key) {
+                // Identical stamp AND identical value (the collision was
+                // refused above) - a true idempotent duplicate, e.g. a
+                // retried gossip round delivering the same update twice.
+                // Not a conflict.
+                Some(existing) if existing.stamp == other_entry.stamp => {}
                 Some(existing) => {
                     let kept_remote = other_entry.rank() > existing.rank();
                     conflicts.push(MergeConflict {
@@ -580,15 +597,17 @@ impl<K: Ord + Clone, V: Clone + PartialEq> LwwMap<K, V> {
                         kept_remote,
                     });
                     if kept_remote {
-                        result.entries.insert(key.clone(), other_entry.clone());
+                        self.entries.insert(key.clone(), other_entry.clone());
+                        changed.push(key.clone());
                     }
                 }
                 None => {
-                    result.entries.insert(key.clone(), other_entry.clone());
+                    self.entries.insert(key.clone(), other_entry.clone());
+                    changed.push(key.clone());
                 }
             }
         }
-        Ok((result, conflicts))
+        Ok((conflicts, changed))
     }
 }
 
@@ -1435,5 +1454,117 @@ mod tests {
         assert!(a.merge(&b).same_visible_state(&b.merge(&a)));
         assert_eq!(a.merge(&b).get(&"gone".to_string()), None);
         assert_eq!(a.merge(&b).tombstone_stamps().len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod in_place_tests {
+    use super::*;
+
+    fn map(entries: &[(&str, &str, u64, u64)]) -> LwwMap<String, String> {
+        let mut m = LwwMap::new();
+        for (key, value, time, writer) in entries {
+            m.set(
+                key.to_string(),
+                value.to_string(),
+                LamportTime(*time),
+                *writer,
+            );
+        }
+        m
+    }
+
+    type Row = (String, Option<String>, u64, u64, u64);
+
+    fn state(m: &LwwMap<String, String>) -> Vec<Row> {
+        m.entries_with_stamps()
+            .into_iter()
+            .map(|(k, v, t, w, g)| (k, v, t.0, w, g))
+            .collect()
+    }
+
+    #[test]
+    fn in_place_gives_the_same_map_and_conflicts_as_merge_report() {
+        let a = map(&[("x", "a1", 1, 1), ("y", "a2", 4, 1), ("z", "a3", 2, 1)]);
+        let b = map(&[("y", "b2", 5, 2), ("z", "b3", 1, 2), ("w", "b4", 1, 2)]);
+        let (reported, report_conflicts) = a.merge_report(&b).unwrap();
+        let mut in_place = a.clone();
+        let (conflicts, changed) = in_place.merge_report_in_place(&b).unwrap();
+        assert_eq!(state(&in_place), state(&reported));
+        assert_eq!(conflicts, report_conflicts);
+        assert_eq!(changed, vec!["w".to_string(), "y".to_string()]);
+    }
+
+    #[test]
+    fn a_losing_remote_entry_changes_nothing_and_is_still_a_conflict() {
+        let mut a = map(&[("k", "mine", 9, 1)]);
+        let before = state(&a);
+        let (conflicts, changed) = a
+            .merge_report_in_place(&map(&[("k", "old", 2, 2)]))
+            .unwrap();
+        assert_eq!(conflicts.len(), 1);
+        assert!(!conflicts[0].kept_remote);
+        assert!(changed.is_empty());
+        assert_eq!(state(&a), before);
+    }
+
+    #[test]
+    fn merging_the_same_map_twice_changes_nothing_the_second_time() {
+        let mut a = map(&[("x", "a", 1, 1)]);
+        let b = map(&[("y", "b", 1, 2), ("x", "b", 3, 2)]);
+        a.merge_report_in_place(&b).unwrap();
+        let after_first = state(&a);
+        let (conflicts, changed) = a.merge_report_in_place(&b).unwrap();
+        assert!(conflicts.is_empty());
+        assert!(changed.is_empty());
+        assert_eq!(state(&a), after_first);
+    }
+
+    #[test]
+    fn a_collision_is_refused_before_any_change() {
+        let mut a = map(&[("a-key", "mine", 1, 1), ("k", "one", 5, 1)]);
+        // "a-key" sorts before "k": an applied-as-you-go merge would have changed it before reaching the collision
+        let remote = {
+            let mut m = map(&[("k", "two", 5, 1)]);
+            m.set("a-key".to_string(), "theirs".to_string(), LamportTime(9), 2);
+            m
+        };
+        let before = state(&a);
+        let error = a.merge_report_in_place(&remote).unwrap_err();
+        assert_eq!(error.key, "k".to_string());
+        assert_eq!(
+            state(&a),
+            before,
+            "a refused merge leaves the map as it was"
+        );
+    }
+
+    #[test]
+    fn seeded_random_merges_agree_with_the_copying_merge() {
+        // a small linear congruential generator keeps the run the same everywhere
+        let mut seed: u64 = 0x5eed_1234;
+        let mut next = move |bound: u64| {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (seed >> 33) % bound
+        };
+        for _ in 0..200 {
+            let mut a: LwwMap<String, String> = LwwMap::new();
+            let mut b: LwwMap<String, String> = LwwMap::new();
+            for _ in 0..next(8) {
+                let key = format!("k{}", next(6));
+                a.set(key, format!("a{}", next(100)), LamportTime(1 + next(10)), 1);
+            }
+            for _ in 0..next(8) {
+                let key = format!("k{}", next(6));
+                b.set(key, format!("b{}", next(100)), LamportTime(1 + next(10)), 2);
+            }
+            let copied = a.merge_report(&b).unwrap();
+            let mut in_place = a.clone();
+            let outcome = in_place.merge_report_in_place(&b).unwrap();
+            assert_eq!(state(&in_place), state(&copied.0));
+            assert_eq!(outcome.0, copied.1);
+        }
     }
 }
