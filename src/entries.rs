@@ -213,11 +213,9 @@ fn next_local_time(map: &LwwMap<String, String>) -> Result<LamportTime, Reconcil
 }
 
 /// What `merge_entries_in_place` gives back: the output of the merge and the keys whose entry changed.
-#[cfg_attr(not(test), allow(dead_code))] // the server switches over to the in-place merge in the next change
 pub type InPlaceOutcome = Result<(MergeOutput, Vec<String>), ReconcileError>;
 
 /// The value and the stamp (time, writer, generation) of one entry.
-#[cfg_attr(not(test), allow(dead_code))] // the server switches over to the in-place merge in the next change
 type EntryState = (Option<String>, u64, u64, u64);
 
 /// `merge_entries` applied to `prior` itself, for the server: no copy of the state is made, and the keys that changed come back with the output
@@ -225,7 +223,6 @@ type EntryState = (Option<String>, u64, u64, u64);
 ///
 /// A clock at the very end of its range (a time within two of `u64::MAX`) is rare enough to take the copying path, which decides the overflow on
 /// the merged map exactly as before.
-#[cfg_attr(not(test), allow(dead_code))] // the server switches over to the in-place merge in the next change
 pub fn merge_entries_in_place(
     entries: &[StampedEntry],
     prior: &mut LwwMap<String, String>,
@@ -256,7 +253,6 @@ pub fn merge_entries_in_place(
 }
 
 /// The keys whose entry (value or stamp) differs between `before` and `after`.
-#[cfg_attr(not(test), allow(dead_code))] // the server switches over to the in-place merge in the next change
 fn changed_keys(before: &LwwMap<String, String>, after: &LwwMap<String, String>) -> Vec<String> {
     let known: BTreeMap<String, EntryState> = before
         .entries_with_stamps()

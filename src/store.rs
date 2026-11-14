@@ -129,20 +129,38 @@ pub fn save_changes(
     compact_after_bytes: u64,
 ) -> io::Result<()> {
     use std::collections::HashMap;
-    use std::io::Write;
     let known: HashMap<String, (Option<String>, u64, u64, u64)> = before
         .entries_with_stamps()
         .into_iter()
         .map(|(key, value, time, writer, generation)| (key, (value, time.0, writer, generation)))
         .collect();
+    let changed: Vec<String> = after
+        .entries_with_stamps()
+        .into_iter()
+        .filter(|(key, value, time, writer, generation)| {
+            known.get(key) != Some(&(value.clone(), time.0, *writer, *generation))
+        })
+        .map(|(key, ..)| key)
+        .collect();
+    save_changed(path, after, &changed, compact_after_bytes)
+}
+
+/// `save_changes` for a caller that already knows which keys changed (the merge in place reports them): the work is proportional to `changed`,
+/// not to the state, so a request that changes one key of a large state reads one entry and writes one line.
+pub fn save_changed(
+    path: &Path,
+    after: &LwwMap<String, String>,
+    changed: &[String],
+    compact_after_bytes: u64,
+) -> io::Result<()> {
+    use std::io::Write;
     let mut lines = String::new();
-    for (key, value, time, writer, generation) in after.entries_with_stamps() {
-        let now = (value.clone(), time.0, writer, generation);
-        if known.get(&key) == Some(&now) {
+    for key in changed {
+        let Some((value, time, writer, generation)) = after.stamped_entry(key) else {
             continue;
-        }
+        };
         let entry = PersistedEntry {
-            key,
+            key: key.clone(),
             value,
             time: time.0,
             writer,
@@ -237,6 +255,19 @@ pub fn persist(
 ) -> io::Result<()> {
     match journal {
         Some(compact_after_bytes) => save_changes(path, before, after, compact_after_bytes),
+        None => save(path, after),
+    }
+}
+
+/// What the server calls after a merge in place: the whole snapshot while the journal is off (`journal` is None), only the `changed` keys otherwise.
+pub fn persist_changed(
+    path: &Path,
+    after: &LwwMap<String, String>,
+    changed: &[String],
+    journal: Option<u64>,
+) -> io::Result<()> {
+    match journal {
+        Some(compact_after_bytes) => save_changed(path, after, changed, compact_after_bytes),
         None => save(path, after),
     }
 }
@@ -478,6 +509,34 @@ mod journal_tests {
             map.set(key.to_string(), value.to_string(), LamportTime(*time), 1);
         }
         map
+    }
+
+    #[test]
+    fn save_changed_writes_only_the_keys_it_is_given() {
+        let dir = dir("changed-keys");
+        let path = dir.join("state.json");
+        let mut state = map_with(&[("a", "1", 1), ("b", "2", 2), ("c", "3", 3)]);
+        save(&path, &state).unwrap();
+        state.set("b".to_string(), "9".to_string(), LamportTime(5), 1);
+        save_changed(&path, &state, &["b".to_string()], 1 << 20).unwrap();
+        let journal = fs::read_to_string(journal_path(&path)).unwrap();
+        assert_eq!(journal.lines().count(), 1, "{journal}");
+        // a key the state never held and an empty list write nothing
+        save_changed(&path, &state, &["nope".to_string()], 1 << 20).unwrap();
+        save_changed(&path, &state, &[], 1 << 20).unwrap();
+        assert_eq!(
+            fs::read_to_string(journal_path(&path))
+                .unwrap()
+                .lines()
+                .count(),
+            1
+        );
+        assert_eq!(load(&path).unwrap().snapshot(), state.snapshot());
+        // past the size of the journal a whole snapshot replaces it
+        save_changed(&path, &state, &["b".to_string()], 1).unwrap();
+        assert!(!journal_path(&path).exists());
+        assert_eq!(load(&path).unwrap().snapshot(), state.snapshot());
+        fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
