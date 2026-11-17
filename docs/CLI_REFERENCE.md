@@ -176,7 +176,7 @@ optional. **Listening on the network needs a secret:** with an `--addr` that is
 not loopback, `serve` refuses to start (`[swarm-sync] fatal: ...`, exit `2`)
 unless `SWARM_SYNC_SHARED_SECRET` is set, because a node that merges what any
 machine on the network sends it lets that machine rewrite the swarm's view of
-itself; `--allow-anonymous` runs an open node on purpose, for a lab. A secret of fewer than 24 characters is reported at start (`warning`), and with `--strict-secret` (off by default) the node does not start with it (`fatal`, exit `2`). A request
+itself; `--allow-anonymous` runs an open node on purpose, for a lab. A secret of fewer than 24 characters is reported at start (`warning`), and with `--strict-secret` (off by default) the node does not start with it (`fatal`, exit `2`). With a secret set, `--stats-require-secret` (off by default) makes `GET /stats` ask for it too, because it lists the address of every peer. A request
 body over 1 MiB is refused with `413` before it is read (a body that announces more than that is refused without reading any of it), requests are served by four workers so a slow upload holds one of them and not the node, and the state file (its directory is created if missing) is
 written to a temp file, forced to disk and renamed over the real one, so a
 power cut cannot leave a truncated state. **`--state-file PATH`** (or the `SWARM_SYNC_STATE_FILE` env
