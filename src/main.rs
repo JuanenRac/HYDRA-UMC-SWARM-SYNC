@@ -77,6 +77,14 @@ fn run_serve(args: &[String]) -> ExitCode {
         .ok()
         .filter(|s| !s.is_empty());
 
+    // Optional secret for the exchange between peers only (POST /merge and
+    // GET /state?full=1): when set it is the only one those two routes
+    // accept, so a node that holds just the shared secret cannot pass as a
+    // peer. Environment only, like the shared secret.
+    let peer_secret = env::var("SWARM_SYNC_PEER_SECRET")
+        .ok()
+        .filter(|s| !s.is_empty());
+
     let allow_anonymous = args.iter().any(|a| a == "--allow-anonymous");
     let strict_secret = args.iter().any(|a| a == "--strict-secret");
     let stats_require_secret = args.iter().any(|a| a == "--stats-require-secret");
@@ -307,6 +315,7 @@ fn run_serve(args: &[String]) -> ExitCode {
                     identity_key,
                     journal_max_bytes,
                     stats_require_secret,
+                    peer_secret,
                 },
             );
             ExitCode::SUCCESS

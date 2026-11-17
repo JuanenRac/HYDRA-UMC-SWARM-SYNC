@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **A separate secret for the exchange between peers (`SWARM_SYNC_PEER_SECRET`, off by default):** when set, `POST /merge` and `GET /state?full=1` accept only that secret, so a node that holds just the shared secret can no longer pass as a peer and write as another node; this node's gossip presents it. Unset, nothing changes.
 - **`--stats-require-secret` closes `GET /stats` behind the shared secret:** the route lists the address of every peer, its last error and its counters and was always open. With a secret set and the flag given (off by default, so nothing changes until it is passed) it answers `401` without `Authorization: Bearer <secret>`, like `/metrics`; a node with no secret warns that the flag has no effect. A test covers the three cases.
 
 - **A short shared secret is reported at start, and `--strict-secret` refuses it:** a `SWARM_SYNC_SHARED_SECRET` of fewer than 24 characters prints a warning; with `--strict-secret` (off by default) the node does not start (`fatal`, exit 2). A test covers the length in characters.
