@@ -113,9 +113,9 @@ fn json_header() -> Header {
 /// caller authentication at all, matching the LAN-trust posture this
 /// project has documented from the start); `Some` requires a matching
 /// `Authorization: Bearer <secret>` header on every `/reconcile` and
-/// `/state` request, `/stats` stays open either way (a harmless
-/// diagnostic, same reasoning as this ecosystem's other services keeping
-/// a bare liveness/status route unauthenticated).
+/// `/state` request, `/stats` stays open unless `--stats-require-secret`
+/// is given (it lists the peers of the node, so a node that can be
+/// reached beyond its own machine may want it closed too).
 fn is_authorized(request: &tiny_http::Request, shared_secret: &Option<String>) -> bool {
     let Some(secret) = shared_secret else {
         return true;
@@ -265,6 +265,7 @@ struct Shared {
     state_path: Option<PathBuf>,
     /// persist only the changed entries in a journal, folded into a new snapshot past this many bytes; None (the default): the whole state every time
     journal_max_bytes: Option<u64>,
+    stats_require_secret: bool,
     shared_secret: Option<String>,
     max_time_jump: u64,
     max_generation_jump: u64,
@@ -317,6 +318,9 @@ pub struct Extra {
     /// Keep a journal of the changed entries next to the state file instead of writing the whole state on every merge (`--journal-max-bytes`,
     /// off by default). The journal is folded into a new snapshot once it is longer than this many bytes.
     pub journal_max_bytes: Option<u64>,
+    /// With a shared secret set, `GET /stats` needs it too (`--stats-require-secret`, off by default: `/stats` is open, as it always was). It lists the address of
+    /// every peer, its last error and its counters. Without a shared secret there is nothing to present and the flag has no effect.
+    pub stats_require_secret: bool,
 }
 
 /// The clock measurements: how, and against which peers.
@@ -344,6 +348,7 @@ impl Default for Extra {
             tombstone_retention_ms: None,
             identity_key: None,
             journal_max_bytes: None,
+            stats_require_secret: false,
         }
     }
 }
@@ -405,6 +410,7 @@ pub fn run_with(
         evidence: Mutex::new(SyncEvidence::default()),
         state_path,
         journal_max_bytes: extra.journal_max_bytes,
+        stats_require_secret: extra.stats_require_secret,
         shared_secret,
         max_time_jump,
         max_generation_jump: extra.max_generation_jump,
@@ -486,6 +492,14 @@ fn serve(server: &Server, shared: &Shared) {
             continue;
         }
         if path == "/stats" && request.method() == &Method::Get {
+            if shared.stats_require_secret && !is_authorized(&request, &shared.shared_secret) {
+                write_json(
+                    request,
+                    401,
+                    &json!({"error": "missing or invalid Authorization: Bearer <token>"}),
+                );
+                continue;
+            }
             let sync = shared.evidence.lock().unwrap().to_json(now_ms());
             write_json(
                 request,
@@ -1269,6 +1283,35 @@ mod tests {
         let (status, text) = get_with_auth(port, "/metrics", Some("metrics-secret-0123456789"));
         assert_eq!(status, 200);
         assert!(!text.contains("metrics-secret"));
+    }
+
+    #[test]
+    fn stats_need_the_shared_secret_only_when_asked_to() {
+        let secret = "stats-secret-0123456789abcd".to_string();
+        let open = start_node(Some(secret.clone()), Extra::default());
+        assert_eq!(get(open, "/stats").0, 200);
+        let closed = start_node(
+            Some(secret.clone()),
+            Extra {
+                stats_require_secret: true,
+                ..Extra::default()
+            },
+        );
+        assert_eq!(get(closed, "/stats").0, 401);
+        assert_eq!(get_with_auth(closed, "/stats", Some("wrong")).0, 401);
+        let (status, body) = get_with_auth(closed, "/stats", Some(&secret));
+        assert_eq!(status, 200);
+        assert!(!body.contains("stats-secret"));
+        assert_eq!(get(closed, "/health").0, 200);
+        // no secret: nothing to present, the flag changes nothing
+        let no_secret = start_node(
+            None,
+            Extra {
+                stats_require_secret: true,
+                ..Extra::default()
+            },
+        );
+        assert_eq!(get(no_secret, "/stats").0, 200);
     }
 
     #[test]
@@ -2179,6 +2222,7 @@ mod tests {
             tombstone_retention_ms: None,
             identity_key: None,
             journal_max_bytes: None,
+            stats_require_secret: false,
         }
     }
 
@@ -2533,6 +2577,7 @@ mod tests {
             tombstone_retention_ms: None,
             identity_key: None,
             journal_max_bytes: None,
+            stats_require_secret: false,
         }
     }
 
