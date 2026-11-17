@@ -267,6 +267,8 @@ struct Shared {
     journal_max_bytes: Option<u64>,
     stats_require_secret: bool,
     shared_secret: Option<String>,
+    /// the secret of the exchange between peers, when it is separate from the shared one
+    peer_secret: Option<String>,
     max_time_jump: u64,
     max_generation_jump: u64,
     gossip: Mutex<Vec<PeerEvidence>>,
@@ -321,6 +323,9 @@ pub struct Extra {
     /// With a shared secret set, `GET /stats` needs it too (`--stats-require-secret`, off by default: `/stats` is open, as it always was). It lists the address of
     /// every peer, its last error and its counters. Without a shared secret there is nothing to present and the flag has no effect.
     pub stats_require_secret: bool,
+    /// A secret for the exchange between peers only (`SWARM_SYNC_PEER_SECRET`). When set, `POST /merge` and `GET /state?full=1` accept it and nothing else (the shared
+    /// secret stops being enough for those two routes), and this node's own gossip presents it. None (the default): the shared secret covers them, as before.
+    pub peer_secret: Option<String>,
 }
 
 /// The clock measurements: how, and against which peers.
@@ -341,6 +346,7 @@ struct ClockPeerEvidence {
 impl Default for Extra {
     fn default() -> Self {
         Extra {
+            peer_secret: None,
             max_generation_jump: DEFAULT_MAX_GENERATION_JUMP,
             gossip: None,
             clock: None,
@@ -412,6 +418,7 @@ pub fn run_with(
         journal_max_bytes: extra.journal_max_bytes,
         stats_require_secret: extra.stats_require_secret,
         shared_secret,
+        peer_secret: extra.peer_secret.clone(),
         max_time_jump,
         max_generation_jump: extra.max_generation_jump,
         gossip: Mutex::new(peers),
@@ -558,7 +565,16 @@ fn serve(server: &Server, shared: &Shared) {
             continue;
         }
         if path == "/state" && request.method() == &Method::Get {
-            if !is_authorized(&request, &shared.shared_secret) {
+            let full = request
+                .url()
+                .split_once('?')
+                .is_some_and(|(_, q)| q.split('&').any(|p| p == "full=1"));
+            let secret = if full && shared.peer_secret.is_some() {
+                &shared.peer_secret
+            } else {
+                &shared.shared_secret
+            };
+            if !is_authorized(&request, secret) {
                 write_json(
                     request,
                     401,
@@ -600,7 +616,14 @@ fn serve(server: &Server, shared: &Shared) {
                     continue;
                 }
             }
-        } else if !is_authorized(&request, &shared.shared_secret) {
+        } else if !is_authorized(
+            &request,
+            if path == "/merge" && shared.peer_secret.is_some() {
+                &shared.peer_secret
+            } else {
+                &shared.shared_secret
+            },
+        ) {
             write_json(
                 request,
                 401,
@@ -848,7 +871,11 @@ fn peers_json(shared: &Shared, now: u64) -> serde_json::Value {
 /// One round with every peer: pull their state and merge it, then (if asked) send ours. A peer that cannot be reached or whose state is
 /// refused is recorded and the round goes on with the next.
 fn gossip_round(shared: &Shared, config: &GossipConfig) {
-    let token = shared.shared_secret.as_deref();
+    // the exchange between peers presents the peer secret when there is one
+    let token = shared
+        .peer_secret
+        .as_deref()
+        .or(shared.shared_secret.as_deref());
     for (index, peer) in config.peers.iter().enumerate() {
         let outcome: Result<(u64, u64), String> = (|| {
             let entries = gossip::pull(peer, token)?;
@@ -1248,6 +1275,7 @@ mod tests {
 
     fn metrics_on() -> Extra {
         Extra {
+            peer_secret: None,
             metrics: true,
             ..Extra::default()
         }
@@ -1293,6 +1321,7 @@ mod tests {
         let closed = start_node(
             Some(secret.clone()),
             Extra {
+                peer_secret: None,
                 stats_require_secret: true,
                 ..Extra::default()
             },
@@ -1307,6 +1336,7 @@ mod tests {
         let no_secret = start_node(
             None,
             Extra {
+                peer_secret: None,
                 stats_require_secret: true,
                 ..Extra::default()
             },
@@ -1614,6 +1644,7 @@ mod tests {
                 None,
                 crate::reconcile::DEFAULT_MAX_TIME_JUMP,
                 Extra {
+                    peer_secret: None,
                     journal_max_bytes: Some(journal_max_bytes),
                     ..Extra::default()
                 },
@@ -1925,6 +1956,7 @@ mod tests {
         start_node(
             Some("peer-secret-0123456789".to_string()),
             Extra {
+                peer_secret: None,
                 identity_key: Some(IDENTITY_KEY.to_vec()),
                 ..Extra::default()
             },
@@ -2195,6 +2227,44 @@ mod tests {
         assert_eq!(get_with_auth(port, "/state?full=1", Some(&secret)).0, 200);
     }
 
+    #[test]
+    fn a_separate_peer_secret_is_the_only_one_that_opens_merge_and_the_full_state() {
+        let shared = "0123456789abcdef".to_string();
+        let peer = "fedcba9876543210".to_string();
+        let port = start_node(
+            Some(shared.clone()),
+            Extra {
+                peer_secret: Some(peer.clone()),
+                ..Extra::default()
+            },
+        );
+        // the shared secret no longer opens the two routes of the exchange
+        assert_eq!(get_with_auth(port, "/state?full=1", Some(&shared)).0, 401);
+        assert_eq!(
+            post_with_auth(port, "/merge", r#"{"entries":[]}"#, Some(&shared)).0,
+            401
+        );
+        assert_eq!(get_with_auth(port, "/state?full=1", Some(&peer)).0, 200);
+        assert_eq!(
+            post_with_auth(port, "/merge", r#"{"entries":[]}"#, Some(&peer)).0,
+            200
+        );
+        // the plain state still takes the shared secret and not the peer one
+        assert_eq!(get_with_auth(port, "/state", Some(&shared)).0, 200);
+        assert_eq!(get_with_auth(port, "/state", Some(&peer)).0, 401);
+    }
+
+    #[test]
+    fn without_a_peer_secret_the_shared_one_covers_the_exchange_as_before() {
+        let shared = "0123456789abcdef".to_string();
+        let port = start_node(Some(shared.clone()), Extra::default());
+        assert_eq!(get_with_auth(port, "/state?full=1", Some(&shared)).0, 200);
+        assert_eq!(
+            post_with_auth(port, "/merge", r#"{"entries":[]}"#, Some(&shared)).0,
+            200
+        );
+    }
+
     /// Waits for an observable effect; the limit is only the point where a hang is called a failure, so it is generous for a loaded machine.
     fn wait_for(what: &str, mut condition: impl FnMut() -> bool) {
         for _ in 0..600 {
@@ -2208,6 +2278,7 @@ mod tests {
 
     fn gossip_to(peers: &[u16], push: bool) -> Extra {
         Extra {
+            peer_secret: None,
             max_generation_jump: DEFAULT_MAX_GENERATION_JUMP,
             gossip: Some(GossipConfig {
                 peers: peers
@@ -2265,6 +2336,7 @@ mod tests {
 
     fn with_retention(ms: u64) -> Extra {
         Extra {
+            peer_secret: None,
             tombstone_retention_ms: Some(ms),
             ..Extra::default()
         }
@@ -2561,6 +2633,7 @@ mod tests {
     fn clock_to(peers: &[u16], secret_free: bool) -> Extra {
         let _ = secret_free;
         Extra {
+            peer_secret: None,
             max_generation_jump: DEFAULT_MAX_GENERATION_JUMP,
             gossip: None,
             clock: Some(ClockSync {
