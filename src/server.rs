@@ -86,6 +86,21 @@ pub fn startup_problem(
     ))
 }
 
+/// The shortest shared secret that is not reported as weak.
+pub const MIN_SECRET_CHARS: usize = 24;
+
+/// A shared secret shorter than `MIN_SECRET_CHARS` characters is guessable by a machine on the network; the node says so at start, and with
+/// `--strict-secret` it does not start. No secret at all is not this function's business (see `startup_problem`).
+pub fn weak_secret_problem(shared_secret: Option<&str>) -> Option<String> {
+    let secret = shared_secret.filter(|s| !s.is_empty())?;
+    if secret.chars().count() >= MIN_SECRET_CHARS {
+        return None;
+    }
+    Some(format!(
+        "SWARM_SYNC_SHARED_SECRET has fewer than {MIN_SECRET_CHARS} characters: use a longer random secret"
+    ))
+}
+
 fn json_header() -> Header {
     Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap()
 }
@@ -1712,6 +1727,17 @@ mod tests {
         assert!(startup_problem("0.0.0.0:8112", Some(""), false).is_some());
         assert!(startup_problem("0.0.0.0:8112", Some("s3cret"), false).is_none());
         assert!(startup_problem("0.0.0.0:8112", None, true).is_none());
+    }
+
+    #[test]
+    fn a_short_shared_secret_is_reported_and_a_long_one_is_not() {
+        assert!(weak_secret_problem(None).is_none());
+        assert!(weak_secret_problem(Some("")).is_none());
+        assert!(weak_secret_problem(Some("s3cret")).is_some());
+        assert!(weak_secret_problem(Some(&"a".repeat(MIN_SECRET_CHARS - 1))).is_some());
+        assert!(weak_secret_problem(Some(&"a".repeat(MIN_SECRET_CHARS))).is_none());
+        // the length is counted in characters, not in bytes
+        assert!(weak_secret_problem(Some(&"é".repeat(MIN_SECRET_CHARS - 1))).is_some());
     }
 
     #[test]

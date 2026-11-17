@@ -33,7 +33,7 @@ $ hydra-umc-swarm-sync
 HYDRA-UMC-SWARM-SYNC v0.1.3
 CRDT swarm state reconciliation service: merges every HydraNode cell's view of swarm state into one convergent, order-independent result.
 Usage: hydra-umc-swarm-sync <scenario.json>
-       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--tombstone-retention-ms N] [--clock-sync-config FILE] [--identity-key-file FILE] [--allow-anonymous]
+       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--tombstone-retention-ms N] [--clock-sync-config FILE] [--identity-key-file FILE] [--allow-anonymous] [--strict-secret]
 See scenarios/example.json for the expected format.
 ```
 
@@ -176,7 +176,7 @@ optional. **Listening on the network needs a secret:** with an `--addr` that is
 not loopback, `serve` refuses to start (`[swarm-sync] fatal: ...`, exit `2`)
 unless `SWARM_SYNC_SHARED_SECRET` is set, because a node that merges what any
 machine on the network sends it lets that machine rewrite the swarm's view of
-itself; `--allow-anonymous` runs an open node on purpose, for a lab. A request
+itself; `--allow-anonymous` runs an open node on purpose, for a lab. A secret of fewer than 24 characters is reported at start (`warning`), and with `--strict-secret` (off by default) the node does not start with it (`fatal`, exit `2`). A request
 body over 1 MiB is refused with `413` before it is read (a body that announces more than that is refused without reading any of it), requests are served by four workers so a slow upload holds one of them and not the node, and the state file (its directory is created if missing) is
 written to a temp file, forced to disk and renamed over the real one, so a
 power cut cannot leave a truncated state. **`--state-file PATH`** (or the `SWARM_SYNC_STATE_FILE` env
