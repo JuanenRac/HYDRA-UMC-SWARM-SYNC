@@ -50,10 +50,10 @@ Ogni riga è una parte di questo repository e il semaforo dice a che punto è og
 | Area | Stato | Cosa significa qui |
 |---|---|---|
 | Software | 🟡 | Funziona per il suo scopo principale; la verifica di onestà di questo README elenca ciò che manca ancora |
-| Test | 🟢 | 224 test automatici, eseguiti a ogni modifica |
+| Test | 🟡 | 224 test automatici registrati; il numero esatto, o un workflow che li esegue a ogni modifica, non è ancora confermato |
 | Hardware reale | 🟠 | Solo simulato: provato con emulatori, test double o simulatori; per questa versione non risulta alcuna esecuzione su hardware reale |
 | Interfaccia e protocolli | 🟡 | Le rotte o i messaggi offerti sono documentati e provati con un client; non tutti i client li hanno ancora usati |
-| Integrazione | 🟠 | Funziona insieme agli altri servizi sul banco prova CM5 e i suoi messaggi seguono i contratti condivisi dell'SDK |
+| Integrazione | 🟠 | I suoi messaggi e le sue rotte sono verificati rispetto ai contratti condivisi dell'SDK; non ha ancora funzionato insieme all'apparecchiatura reale |
 | Sicurezza | 🟠 | Esistono alcune protezioni (un token, limiti su ciò che accetta) ma non sono tutte coperte da test; nessuno al di fuori del progetto le ha riviste |
 | Distribuzione | 🟡 | Installato come servizio sul banco prova CM5 con il suo installatore e la sua unità; riavviato a ogni aggiornamento |
 | Esercizio | 🟡 | Offre /metrics nel formato testo di Prometheus con un riepilogo dello stato quando il file di configurazione lo attiva (spento per impostazione predefinita); non è ancora collegato a un pannello di monitoraggio |
