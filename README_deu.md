@@ -139,6 +139,7 @@ flowchart TD
 | `--port` | `8112` | Port des HTTP-Knotens |
 | `--state-file` / `SWARM_SYNC_STATE_FILE` | keiner | Datei, die den Zustand zwischen Läufen behält |
 | `SWARM_SYNC_SHARED_SECRET` | keiner | gemeinsames Geheimnis, das ein Netzknoten von Aufrufern verlangt und an Nachbarn sendet |
+| `--strict-secret` | aus | bei einem gemeinsamen Geheimnis unter 24 Zeichen warnt der Knoten beim Start nur; mit dieser Option startet er nicht (Exit 2) |
 | `--max-time-jump` | `1000000` | wie weit eine Anfrage über die neueste Zeit hinaus schreiben darf |
 | `--max-generation-jump` | `1000` | wie weit ein Eintrag über der Generation des Schlüssels liegen darf |
 | `--presence` | `delete-wins` | wie ein Löschen und ein gleichzeitiges Hinzufügen desselben Schlüssels aufgelöst werden: `delete-wins` oder `add-wins` (alle Knoten eines Schwarms müssen dasselbe verwenden) |

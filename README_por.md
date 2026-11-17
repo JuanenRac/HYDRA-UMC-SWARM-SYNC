@@ -143,6 +143,7 @@ flowchart TD
 | `--port` | `8112` | porta do nó HTTP |
 | `--state-file` / `SWARM_SYNC_STATE_FILE` | nenhum | ficheiro que guarda o estado entre execuções |
 | `SWARM_SYNC_SHARED_SECRET` | nenhum | segredo partilhado que um nó de rede exige a quem chama e envia aos pares |
+| `--strict-secret` | desligado | com um segredo partilhado de menos de 24 caracteres o nó apenas avisa ao arrancar; com esta opção não arranca (saída 2) |
 | `--max-time-jump` | `1000000` | até onde um pedido pode escrever para além do tempo mais recente |
 | `--max-generation-jump` | `1000` | até onde uma entrada pode estar acima da geração da chave |
 | `--presence` | `delete-wins` | como se resolvem um apagamento e uma adição concorrente da mesma chave: `delete-wins` ou `add-wins` (todos os nós do enxame têm de usar o mesmo) |

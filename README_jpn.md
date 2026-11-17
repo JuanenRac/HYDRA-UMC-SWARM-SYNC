@@ -139,6 +139,7 @@ flowchart TD
 | `--port` | `8112` | HTTP ノードのポート |
 | `--state-file` / `SWARM_SYNC_STATE_FILE` | なし | 実行間で状態を保持するファイル |
 | `SWARM_SYNC_SHARED_SECRET` | なし | ネットワークノードが呼び出し側に要求し、ピアへ送る共有シークレット |
+| `--strict-secret` | オフ | 共有シークレットが 24 文字未満のとき、ノードは起動時に警告するだけですが、このオプションでは起動しません（終了コード 2） |
 | `--max-time-jump` | `1000000` | リクエストが最新時刻をどこまで超えて書き込めるか |
 | `--max-generation-jump` | `1000` | エントリがキーの世代をどこまで超えてよいか |
 | `--presence` | `delete-wins` | 同じキーの削除と同時の追加をどう解決するか：`delete-wins` または `add-wins`（スウォームの全ノードで同じ設定にすること） |

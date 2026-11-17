@@ -139,6 +139,7 @@ flowchart TD
 | `--port` | `8112` | HTTP 节点的端口 |
 | `--state-file` / `SWARM_SYNC_STATE_FILE` | 无 | 在两次运行之间保存状态的文件 |
 | `SWARM_SYNC_SHARED_SECRET` | 无 | 网络节点要求调用方提供并发送给对等节点的共享密钥 |
+| `--strict-secret` | 关闭 | 共享密钥少于 24 个字符时，节点只在启动时警告；使用此选项则不会启动（退出码 2） |
 | `--max-time-jump` | `1000000` | 请求可写入到最新时间之后多远 |
 | `--max-generation-jump` | `1000` | 条目可超出键的代数多远 |
 | `--presence` | `delete-wins` | 同一键的删除与并发添加如何裁决：`delete-wins` 或 `add-wins`（集群中所有节点必须一致） |

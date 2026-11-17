@@ -139,6 +139,7 @@ flowchart TD
 | `--port` | `8112` | puerto del nodo HTTP |
 | `--state-file` / `SWARM_SYNC_STATE_FILE` | ninguno | fichero que conserva el estado entre ejecuciones |
 | `SWARM_SYNC_SHARED_SECRET` | ninguno | secreto compartido que un nodo de red exige a quien llama y envía a los pares |
+| `--strict-secret` | apagado | con un secreto compartido de menos de 24 caracteres el nodo solo avisa al arrancar; con esta opción no arranca (salida 2) |
 | `--max-time-jump` | `1000000` | hasta dónde puede escribir una petición sobre el tiempo más reciente |
 | `--max-generation-jump` | `1000` | hasta dónde puede estar una entrada sobre la generación de la clave |
 | `--presence` | `delete-wins` | cómo se resuelven un borrado y un alta concurrente de la misma clave: `delete-wins` o `add-wins` (todos los nodos del enjambre deben usar lo mismo) |
