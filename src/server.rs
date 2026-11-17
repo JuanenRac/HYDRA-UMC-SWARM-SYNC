@@ -2241,12 +2241,24 @@ mod tests {
         // the shared secret no longer opens the two routes of the exchange
         assert_eq!(get_with_auth(port, "/state?full=1", Some(&shared)).0, 401);
         assert_eq!(
-            post_with_auth(port, "/merge", r#"{"entries":[]}"#, Some(&shared)).0,
+            post_with_auth(
+                port,
+                "/merge",
+                r#"{"entries":[{"key":"k","value":"v","time":5,"writer":2,"generation":1}]}"#,
+                Some(&shared)
+            )
+            .0,
             401
         );
         assert_eq!(get_with_auth(port, "/state?full=1", Some(&peer)).0, 200);
         assert_eq!(
-            post_with_auth(port, "/merge", r#"{"entries":[]}"#, Some(&peer)).0,
+            post_with_auth(
+                port,
+                "/merge",
+                r#"{"entries":[{"key":"k","value":"v","time":5,"writer":2,"generation":1}]}"#,
+                Some(&peer)
+            )
+            .0,
             200
         );
         // the plain state still takes the shared secret and not the peer one
@@ -2260,7 +2272,13 @@ mod tests {
         let port = start_node(Some(shared.clone()), Extra::default());
         assert_eq!(get_with_auth(port, "/state?full=1", Some(&shared)).0, 200);
         assert_eq!(
-            post_with_auth(port, "/merge", r#"{"entries":[]}"#, Some(&shared)).0,
+            post_with_auth(
+                port,
+                "/merge",
+                r#"{"entries":[{"key":"k","value":"v","time":5,"writer":2,"generation":1}]}"#,
+                Some(&shared)
+            )
+            .0,
             200
         );
     }
