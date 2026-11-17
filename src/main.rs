@@ -78,6 +78,7 @@ fn run_serve(args: &[String]) -> ExitCode {
         .filter(|s| !s.is_empty());
 
     let allow_anonymous = args.iter().any(|a| a == "--allow-anonymous");
+    let strict_secret = args.iter().any(|a| a == "--strict-secret");
     // The signing key of HYDRA-UMC-SERVER, from a file: with it a /reconcile needs a signed token and writes as the writer of that user. Off unless given.
     let identity_key = match find_flag(args, "--identity-key-file")
         .or_else(|| env::var("HYDRA_UMC_SWARM_SYNC_IDENTITY_KEY_FILE").ok())
@@ -216,6 +217,13 @@ fn run_serve(args: &[String]) -> ExitCode {
     };
     if !peers.is_empty() && shared_secret.is_none() {
         eprintln!("[swarm-sync] warning: --peer without SWARM_SYNC_SHARED_SECRET: the state of this node is asked for and sent with no authentication");
+    }
+    if let Some(problem) = server::weak_secret_problem(shared_secret.as_deref()) {
+        if strict_secret {
+            eprintln!("[swarm-sync] fatal: {problem} (--strict-secret)");
+            return ExitCode::from(2);
+        }
+        eprintln!("[swarm-sync] warning: {problem}");
     }
     if let Some(problem) =
         server::startup_problem(&bind_addr, shared_secret.as_deref(), allow_anonymous)
@@ -397,7 +405,7 @@ fn main() -> ExitCode {
     let Some(scenario_path) = args.get(1) else {
         eprintln!("Usage: hydra-umc-swarm-sync <scenario.json>");
         eprintln!(
-            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--tombstone-retention-ms N] [--clock-sync-config FILE] [--identity-key-file FILE] [--allow-anonymous]\n       hydra-umc-swarm-sync writer-id USER\n       hydra-umc-swarm-sync reseal --state-file F --out G --map OLD=USER"
+            "       hydra-umc-swarm-sync serve [--addr ADDR] [--port PORT] [--state-file PATH] [--max-time-jump N] [--max-generation-jump N] [--presence delete-wins|add-wins] [--peer URL]... [--gossip-interval-ms N] [--gossip-push] [--tombstone-retention-ms N] [--clock-sync-config FILE] [--identity-key-file FILE] [--allow-anonymous] [--strict-secret]\n       hydra-umc-swarm-sync writer-id USER\n       hydra-umc-swarm-sync reseal --state-file F --out G --map OLD=USER"
         );
         eprintln!("See scenarios/example.json for the expected format.");
         return ExitCode::SUCCESS;
