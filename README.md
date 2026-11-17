@@ -139,6 +139,7 @@ flowchart TD
 | `--port` | `8112` | port of the HTTP node |
 | `--state-file` / `SWARM_SYNC_STATE_FILE` | none | file that keeps the state between runs |
 | `SWARM_SYNC_SHARED_SECRET` | none | shared secret that a network node requires from callers and sends to peers |
+| `--strict-secret` | off | with a shared secret of fewer than 24 characters the node only warns at start; with this flag it does not start (exit 2) |
 | `--max-time-jump` | `1000000` | how far past the newest time a request may write |
 | `--max-generation-jump` | `1000` | how far past a key's generation an entry may be |
 | `--presence` | `delete-wins` | how a delete and a concurrent add of the same key are resolved: `delete-wins` or `add-wins` (every node of a swarm must use the same) |

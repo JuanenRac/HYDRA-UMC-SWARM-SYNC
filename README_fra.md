@@ -139,6 +139,7 @@ flowchart TD
 | `--port` | `8112` | port du nœud HTTP |
 | `--state-file` / `SWARM_SYNC_STATE_FILE` | aucun | fichier qui conserve l'état entre les exécutions |
 | `SWARM_SYNC_SHARED_SECRET` | aucun | secret partagé qu'un nœud réseau exige des appelants et envoie aux pairs |
+| `--strict-secret` | désactivé | avec un secret partagé de moins de 24 caractères le nœud avertit seulement au démarrage ; avec cette option il ne démarre pas (sortie 2) |
 | `--max-time-jump` | `1000000` | jusqu'où une requête peut écrire au-delà du temps le plus récent |
 | `--max-generation-jump` | `1000` | jusqu'où une entrée peut dépasser la génération de la clé |
 | `--presence` | `delete-wins` | comment sont résolus une suppression et un ajout concurrent de la même clé : `delete-wins` ou `add-wins` (tous les nœuds d'un essaim doivent utiliser le même) |
