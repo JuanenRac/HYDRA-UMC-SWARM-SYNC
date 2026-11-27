@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+- **Key and token files saved with a byte order mark are read:** a file written by an editor of Windows as "UTF-8 with BOM" kept the mark in front of the secret, so the tokens of the server were refused. The mark is dropped now; a file in another encoding (UTF-16) is refused.
 - **A separate secret for the exchange between peers (`SWARM_SYNC_PEER_SECRET`, off by default):** when set, `POST /merge` and `GET /state?full=1` accept only that secret, so a node that holds just the shared secret can no longer pass as a peer and write as another node; this node's gossip presents it. Unset, nothing changes.
 - **`--stats-require-secret` closes `GET /stats` behind the shared secret:** the route lists the address of every peer, its last error and its counters and was always open. With a secret set and the flag given (off by default, so nothing changes until it is passed) it answers `401` without `Authorization: Bearer <secret>`, like `/metrics`; a node with no secret warns that the flag has no effect. A test covers the three cases.
 
